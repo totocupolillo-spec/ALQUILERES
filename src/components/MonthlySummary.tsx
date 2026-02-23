@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Calendar, Building2, DollarSign, AlertTriangle } from 'lucide-react';
+import { X, Download, Calendar, Building2, DollarSign, AlertTriangle, BarChart3 } from 'lucide-react';
 import { Receipt, Tenant, Property } from '../App';
 
 interface MonthlySummaryProps {
