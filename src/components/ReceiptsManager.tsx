@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FileText, Download, Eye, Search, Filter, X, Printer } from 'lucide-react';
+import { Plus, FileText, Download, Eye, Search, Filter, X, Printer, BarChart3 } from 'lucide-react';
 import { Tenant, Receipt, CashMovement, Property } from '../App';
+import MonthlySummary from './MonthlySummary';
 
 interface ReceiptsManagerProps {
   tenants: Tenant[];
@@ -48,6 +49,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [processingReceipt, setProcessingReceipt] = useState<Receipt | null>(null);
+  const [showMonthlySummary, setShowMonthlySummary] = useState(false);
 
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -324,6 +326,13 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
         >
           <Plus className="h-5 w-5" />
           <span>Generar Recibo</span>
+        </button>
+        <button
+          onClick={() => setShowMonthlySummary(true)}
+          className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+        >
+          <BarChart3 className="h-5 w-5" />
+          <span>Resumen Mensual</span>
         </button>
       </div>
 
@@ -825,6 +834,16 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Monthly Summary Modal */}
+      {showMonthlySummary && (
+        <MonthlySummary
+          receipts={receipts}
+          tenants={tenants}
+          properties={properties}
+          onClose={() => setShowMonthlySummary(false)}
+        />
       )}
     </div>
   );
