@@ -11,6 +11,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [deliveryAmount, setDeliveryAmount] = useState('');
   const [selectedCurrency, setSelectedCurrency] = useState<'ARS' | 'USD'>('ARS');
+  const [deliveryCategory, setDeliveryCategory] = useState<'owner' | 'maintenance' | 'commission' | 'other'>('owner');
+  const [deliveryComment, setDeliveryComment] = useState('');
 
   // Calculate current balances
   const balanceARS = cashMovements.reduce((sum, movement) => {
@@ -37,17 +39,31 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
       return;
     }
 
+    const getCategoryDescription = (category: string) => {
+      const descriptions = {
+        owner: 'Entrega al propietario',
+        maintenance: 'Gastos de mantenimiento',
+        commission: 'Comisiones',
+        other: 'Otros gastos'
+      };
+      return descriptions[category as keyof typeof descriptions];
+    };
+
     const newMovement: CashMovement = {
       id: Date.now(),
       type: 'delivery',
-      description: 'Entrega al propietario',
+      description: getCategoryDescription(deliveryCategory),
+      category: deliveryCategory,
       amount,
       currency: selectedCurrency,
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      comment: deliveryComment
     };
 
     setCashMovements([newMovement, ...cashMovements]);
     setDeliveryAmount('');
+    setDeliveryCategory('owner');
+    setDeliveryComment('');
     setShowDeliveryModal(false);
   };
 
@@ -60,6 +76,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
         id: Date.now(),
         type: 'delivery',
         description: `Entrega total al propietario - ${currency}`,
+        category: 'owner',
         amount: currentBalance,
         currency,
         date: new Date().toISOString().split('T')[0]
@@ -211,7 +228,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
                   Descripción
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Inquilino/Propiedad
+                  Detalles
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Monto
@@ -245,11 +262,15 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
                     <span className="text-sm text-gray-900">{movement.description}</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {movement.tenant && (
+                    {movement.tenant ? (
                       <div>
                         <div className="text-sm font-medium text-gray-900">{movement.tenant}</div>
                         <div className="text-sm text-gray-500">{movement.property}</div>
                       </div>
+                    ) : movement.comment ? (
+                      <div className="text-sm text-gray-600">{movement.comment}</div>
+                    ) : (
+                      <span className="text-sm text-gray-400">-</span>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -273,6 +294,20 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Entregar Dinero al Propietario</h3>
             
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de entrega</label>
+                <select
+                  value={deliveryCategory}
+                  onChange={(e) => setDeliveryCategory(e.target.value as 'owner' | 'maintenance' | 'commission' | 'other')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="owner">Entrega al propietario</option>
+                  <option value="maintenance">Gastos de mantenimiento</option>
+                  <option value="commission">Comisiones</option>
+                  <option value="other">Otros gastos</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
                 <select
@@ -307,6 +342,17 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
                   max={selectedCurrency === 'ARS' ? balanceARS : balanceUSD}
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Comentario (opcional)</label>
+                <textarea
+                  value={deliveryComment}
+                  onChange={(e) => setDeliveryComment(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Agregar detalles sobre esta entrega..."
+                  rows={3}
+                />
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-6">
@@ -314,6 +360,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({ cashMovements, setCashMovem
                 onClick={() => {
                   setShowDeliveryModal(false);
                   setDeliveryAmount('');
+                  setDeliveryCategory('owner');
+                  setDeliveryComment('');
                 }}
                 className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >

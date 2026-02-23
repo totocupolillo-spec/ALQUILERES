@@ -71,11 +71,13 @@ export interface CashMovement {
   id: number;
   type: 'income' | 'delivery';
   description: string;
+  category?: 'owner' | 'maintenance' | 'commission' | 'other';
   amount: number;
   currency: 'ARS' | 'USD';
   date: string;
   tenant?: string;
   property?: string;
+  comment?: string;
 }
 
 // Funciones para localStorage
