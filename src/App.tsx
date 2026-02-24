@@ -6,6 +6,7 @@ import TenantsManager from './components/TenantsManager';
 import ReceiptsManager from './components/ReceiptsManager';
 import PaymentsHistory from './components/PaymentsHistory';
 import CashRegister from './components/CashRegister';
+import DataManager from './components/DataManager';
 
 type TabType = 'dashboard' | 'properties' | 'tenants' | 'receipts' | 'history' | 'cash';
 
@@ -398,6 +399,18 @@ function App() {
             </div>
             
             <div className="flex items-center space-x-4">
+              <DataManager 
+                properties={properties}
+                tenants={tenants}
+                receipts={receipts}
+                cashMovements={cashMovements}
+                setProperties={setProperties}
+                setTenants={setTenants}
+                setReceipts={setReceipts}
+                setCashMovements={setCashMovements}
+                updateTenantBalance={updateTenantBalance}
+                updatePropertyTenant={updatePropertyTenant}
+              />
               <div className="relative">
                 <Search className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                 <input
