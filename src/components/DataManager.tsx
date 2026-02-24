@@ -13,6 +13,8 @@ interface DataManagerProps {
   setCashMovements: React.Dispatch<React.SetStateAction<CashMovement[]>>;
   updateTenantBalance: (tenantName: string, newBalance: number) => void;
   updatePropertyTenant: (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => void;
+  supabaseHook: any;
+  user: any;
 }
 
 interface SystemData {
@@ -41,7 +43,9 @@ const DataManager: React.FC<DataManagerProps> = ({
   setReceipts,
   setCashMovements,
   updateTenantBalance,
-  updatePropertyTenant
+  updatePropertyTenant,
+  supabaseHook,
+  user
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -148,6 +152,10 @@ const DataManager: React.FC<DataManagerProps> = ({
         }
       });
 
+      // Si el usuario está autenticado, también guardar en Supabase
+      if (user && supabaseHook) {
+        syncDataToSupabase(importData);
+      }
       setImportStatus('success');
       setImportMessage('¡Datos importados exitosamente! Todos tus datos han sido restaurados.');
       
@@ -161,6 +169,33 @@ const DataManager: React.FC<DataManagerProps> = ({
     } catch (error) {
       setImportStatus('error');
       setImportMessage('Error al importar los datos. Por favor intenta nuevamente.');
+    }
+  };
+
+  // Sincronizar datos importados con Supabase
+  const syncDataToSupabase = async (data: SystemData) => {
+    try {
+      // Sincronizar propiedades
+      for (const property of data.properties) {
+        await supabaseHook.saveProperty(property);
+      }
+      
+      // Sincronizar inquilinos
+      for (const tenant of data.tenants) {
+        await supabaseHook.saveTenant(tenant);
+      }
+      
+      // Sincronizar recibos
+      for (const receipt of data.receipts) {
+        await supabaseHook.saveReceipt(receipt);
+      }
+      
+      // Sincronizar movimientos de caja
+      for (const movement of data.cashMovements) {
+        await supabaseHook.saveCashMovement(movement);
+      }
+    } catch (error) {
+      console.error('Error syncing to Supabase:', error);
     }
   };
 
@@ -217,6 +252,11 @@ const DataManager: React.FC<DataManagerProps> = ({
                  importStatus === 'success' ? 'Importación Exitosa' : 
                  importStatus === 'error' ? 'Error de Importación' : 'Importar Datos'}
               </h3>
+              {user && (
+                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  🔄 Sincronización automática activada
+                </div>
+              )}
               <button
                 onClick={resetImport}
                 className="text-gray-400 hover:text-gray-600"

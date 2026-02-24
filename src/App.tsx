@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Users, Receipt, Calendar, BarChart3, Plus, Search, Bell, Wallet } from 'lucide-react';
+import { useSupabase } from './hooks/useSupabase';
 import Dashboard from './components/Dashboard';
 import PropertiesManager from './components/PropertiesManager';
 import TenantsManager from './components/TenantsManager';
@@ -7,6 +8,8 @@ import ReceiptsManager from './components/ReceiptsManager';
 import PaymentsHistory from './components/PaymentsHistory';
 import CashRegister from './components/CashRegister';
 import DataManager from './components/DataManager';
+import AuthComponent from './components/AuthComponent';
+import { supabase } from './lib/supabase';
 
 type TabType = 'dashboard' | 'properties' | 'tenants' | 'receipts' | 'history' | 'cash';
 
@@ -101,7 +104,10 @@ const loadFromLocalStorage = (key: string, defaultValue: any) => {
 };
 
 function App() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const supabaseHook = useSupabase();
   
   // Estados globales con persistencia
   const [properties, setProperties] = useState<Property[]>(() => 
@@ -289,6 +295,48 @@ function App() {
   ])
   );
 
+  // Verificar autenticación al cargar
+  useEffect(() => {
+    // Obtener sesión actual
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Escuchar cambios de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Cargar datos desde Supabase cuando el usuario se autentica
+  useEffect(() => {
+    if (user) {
+      loadAllDataFromSupabase();
+    }
+  }, [user]);
+
+  const loadAllDataFromSupabase = async () => {
+    try {
+      const [propertiesData, tenantsData, receiptsData, cashMovementsData] = await Promise.all([
+        supabaseHook.loadProperties(),
+        supabaseHook.loadTenants(),
+        supabaseHook.loadReceipts(),
+        supabaseHook.loadCashMovements()
+      ]);
+
+      if (propertiesData.length > 0) setProperties(propertiesData);
+      if (tenantsData.length > 0) setTenants(tenantsData);
+      if (receiptsData.length > 0) setReceipts(receiptsData);
+      if (cashMovementsData.length > 0) setCashMovements(cashMovementsData);
+    } catch (error) {
+      console.error('Error loading data from Supabase:', error);
+    }
+  };
+
   // Guardar en localStorage cuando cambien los datos
   useEffect(() => {
     saveToLocalStorage('properties', properties);
@@ -322,6 +370,11 @@ function App() {
       id: Date.now()
     };
     setCashMovements(prev => [newMovement, ...prev]);
+    
+    // Guardar en Supabase si el usuario está autenticado
+    if (user) {
+      supabaseHook.saveCashMovement(movement);
+    }
   };
 
   // Función para actualizar saldo de inquilino
@@ -331,6 +384,14 @@ function App() {
         ? { ...tenant, balance: newBalance }
         : tenant
     ));
+    
+    // Actualizar en Supabase si el usuario está autenticado
+    if (user) {
+      const tenant = tenants.find(t => t.name === tenantName);
+      if (tenant) {
+        supabaseHook.saveTenant({ ...tenant, balance: newBalance });
+      }
+    }
   };
 
   // Función para actualizar propiedad cuando se asigna/cambia inquilino
@@ -338,15 +399,36 @@ function App() {
     setProperties(prev => prev.map(property => {
       // Liberar propiedad anterior
       if (oldPropertyId && property.id === oldPropertyId) {
-        return { ...property, tenant: null, status: 'disponible' as const };
+        const updatedProperty = { ...property, tenant: null, status: 'disponible' as const };
+        if (user) supabaseHook.saveProperty(updatedProperty);
+        return updatedProperty;
       }
       // Asignar nueva propiedad
       if (property.id === propertyId) {
-        return { ...property, tenant: tenantName, status: 'ocupado' as const };
+        const updatedProperty = { ...property, tenant: tenantName, status: 'ocupado' as const };
+        if (user) supabaseHook.saveProperty(updatedProperty);
+        return updatedProperty;
       }
       return property;
     }));
   };
+
+  // Mostrar pantalla de carga
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando sistema...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar componente de autenticación si no hay usuario
+  if (!user) {
+    return <AuthComponent />;
+  }
 
   const renderContent = () => {
     switch (activeTab) {
@@ -374,6 +456,8 @@ function App() {
           setReceipts={setReceipts}
           addCashMovement={addCashMovement}
           updateTenantBalance={updateTenantBalance}
+          supabaseHook={supabaseHook}
+          user={user}
         />;
       case 'history':
         return <PaymentsHistory receipts={receipts} />;
@@ -381,6 +465,8 @@ function App() {
         return <CashRegister 
           cashMovements={cashMovements} 
           setCashMovements={setCashMovements}
+          supabaseHook={supabaseHook}
+          user={user}
         />;
       default:
         return <Dashboard tenants={tenants} receipts={receipts} properties={properties} />;
@@ -396,6 +482,12 @@ function App() {
             <div className="flex items-center space-x-3">
               <Building2 className="h-8 w-8 text-blue-600" />
               <h1 className="text-xl font-bold text-gray-900">Sistema de Alquileres</h1>
+              {supabaseHook.loading && (
+                <div className="flex items-center space-x-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-sm">Sincronizando...</span>
+                </div>
+              )}
             </div>
             
             <div className="flex items-center space-x-4">
@@ -410,6 +502,8 @@ function App() {
                 setCashMovements={setCashMovements}
                 updateTenantBalance={updateTenantBalance}
                 updatePropertyTenant={updatePropertyTenant}
+                supabaseHook={supabaseHook}
+                user={user}
               />
               <div className="relative">
                 <Search className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
@@ -422,6 +516,12 @@ function App() {
               <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
                 <Bell className="h-6 w-6" />
                 <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full"></span>
+              </button>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cerrar Sesión
               </button>
             </div>
           </div>
@@ -455,6 +555,21 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {supabaseHook.error && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <div className="text-red-600 text-sm">
+                {supabaseHook.error}
+              </div>
+              <button
+                onClick={() => supabaseHook.setError(null)}
+                className="ml-auto text-red-600 hover:text-red-800"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         {renderContent()}
       </main>
     </div>
