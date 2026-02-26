@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { X, Download, Calendar, Building2, DollarSign, AlertTriangle, BarChart3 } from 'lucide-react';
-import { Receipt, Tenant, Property } from '../App';
+import { X, Download, BarChart3 } from 'lucide-react';
+import { Receipt, Tenant, Property, BUILDINGS } from '../App';
 
 interface MonthlySummaryProps {
   receipts: Receipt[];
@@ -18,6 +18,21 @@ interface SummaryRow {
   property: string;
 }
 
+const monthIndex: Record<string, number> = {
+  Enero: 0,
+  Febrero: 1,
+  Marzo: 2,
+  Abril: 3,
+  Mayo: 4,
+  Junio: 5,
+  Julio: 6,
+  Agosto: 7,
+  Septiembre: 8,
+  Octubre: 9,
+  Noviembre: 10,
+  Diciembre: 11
+};
+
 const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, properties, onClose }) => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -27,69 +42,62 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    years.add(new Date().getFullYear());
+    receipts.forEach(r => years.add(r.year));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [receipts]);
+
   const summaryData = useMemo(() => {
-    if (!selectedMonth) return [];
+    if (!selectedMonth) return [] as SummaryRow[];
 
-    // Obtener recibos del mes y año seleccionado
-    const monthReceipts = receipts.filter(receipt => 
-      receipt.month === selectedMonth && receipt.year === selectedYear
-    );
+    const monthReceipts = receipts.filter(r => r.month === selectedMonth && r.year === selectedYear);
 
-    // Crear un mapa de propiedades para acceso rápido
-    const propertyMap = new Map(properties.map(p => [p.name, p]));
-    
-    // Crear un mapa de inquilinos para acceso rápido
-    const tenantMap = new Map(tenants.map(t => [t.name, t]));
+    const tenantByName = new Map(tenants.map(t => [t.name, t]));
+    const tenantByPropertyId = new Map(tenants.filter(t => t.propertyId != null).map(t => [t.propertyId as number, t]));
 
-    // Crear resumen por inquilino
-    const summaryMap = new Map<string, SummaryRow>();
-
-    // Procesar recibos del mes
-    monthReceipts.forEach(receipt => {
-      const property = propertyMap.get(receipt.property);
-      const tenant = tenantMap.get(receipt.tenant);
-      
-      if (property && tenant) {
-        const key = `${receipt.tenant}-${receipt.property}`;
-        
-        if (summaryMap.has(key)) {
-          const existing = summaryMap.get(key)!;
-          existing.paidAmount += receipt.paidAmount;
-        } else {
-          summaryMap.set(key, {
-            building: receipt.building,
-            address: property.address,
-            tenant: receipt.tenant,
-            property: receipt.property,
-            paidAmount: receipt.paidAmount,
-            totalDebt: tenant.balance
-          });
-        }
-      }
+    const receiptsByPropertyName = new Map<string, Receipt[]>();
+    monthReceipts.forEach(r => {
+      const key = `${r.building}||${r.property}`;
+      const arr = receiptsByPropertyName.get(key) ?? [];
+      arr.push(r);
+      receiptsByPropertyName.set(key, arr);
     });
 
-    // Agregar inquilinos que no tienen recibos en el mes pero tienen deuda
-    tenants.forEach(tenant => {
-      if (tenant.balance > 0) {
-        const property = properties.find(p => p.id === tenant.propertyId);
-        if (property) {
-          const key = `${tenant.name}-${property.name}`;
-          
-          if (!summaryMap.has(key)) {
-            summaryMap.set(key, {
-              building: property.building,
-              address: property.address,
-              tenant: tenant.name,
-              property: property.name,
-              paidAmount: 0,
-              totalDebt: tenant.balance
-            });
-          }
-        }
-      }
+    const rows: SummaryRow[] = properties.map((p) => {
+      const t = p.tenant ? tenantByName.get(p.tenant) : (p.id ? tenantByPropertyId.get(p.id) : undefined);
+      const tenantName = t?.name || p.tenant || '';
+      const key = `${p.building}||${p.name}`;
+      const propReceipts = receiptsByPropertyName.get(key) ?? [];
+      const paidAmount = propReceipts.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+
+      // Deuda: priorizamos el balance del inquilino (es el dato que usa el sistema)
+      // Si no existe balance, usamos saldo pendiente del/los recibos del mes.
+      const tenantDebt = typeof t?.balance === 'number' ? t.balance : 0;
+      const receiptsDebt = propReceipts.reduce((sum, r) => sum + (r.remainingBalance || 0), 0);
+      const totalDebt = Math.max(tenantDebt, receiptsDebt);
+
+      return {
+        building: p.building,
+        address: p.address,
+        tenant: tenantName || '-',
+        property: p.name,
+        paidAmount,
+        totalDebt
+      };
     });
 
-    return Array.from(summaryMap.values()).sort((a, b) => a.building.localeCompare(b.building));
+    const buildingOrderIndex = (b: string) => {
+      const idx = BUILDINGS.findIndex(x => x === b);
+      return idx === -1 ? 999 : idx;
+    };
+
+    return rows.sort((a, b) => {
+      const bo = buildingOrderIndex(a.building) - buildingOrderIndex(b.building);
+      if (bo !== 0) return bo;
+      return a.property.localeCompare(b.property);
+    });
   }, [selectedMonth, selectedYear, receipts, tenants, properties]);
 
   const totals = useMemo(() => {
@@ -105,21 +113,22 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
   const exportToCSV = () => {
     if (!selectedMonth) return;
 
-    const headers = ['Edificio', 'Dirección', 'Inquilino', 'Monto Pagado', 'Saldo Adeudado'];
+    const headers = ['Edificio', 'Propiedad', 'Dirección', 'Inquilino', 'Monto Pagado', 'Saldo Adeudado'];
     const csvContent = [
       `Resumen Mensual - ${selectedMonth} ${selectedYear}`,
       '',
       headers.join(','),
       ...summaryData.map(row => [
         row.building,
+        row.property,
         row.address,
         row.tenant,
         row.paidAmount,
         row.totalDebt
       ].join(',')),
       '',
-      `Total Cobranzas,,,${totals.totalCollected},`,
-      `Total Adeudado,,,${totals.totalDebt},`
+      `Total Cobranzas,,,,${totals.totalCollected},`,
+      `Total Adeudado,,,,${totals.totalDebt},`
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -155,11 +164,12 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
             <h1>RESUMEN MENSUAL DE COBRANZAS</h1>
             <h2>${selectedMonth} ${selectedYear}</h2>
           </div>
-          
+
           <table class="summary-table">
             <thead>
               <tr>
                 <th>Edificio</th>
+                <th>Propiedad</th>
                 <th>Dirección</th>
                 <th>Inquilino</th>
                 <th>Monto Pagado</th>
@@ -170,6 +180,7 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
               ${summaryData.map(row => `
                 <tr>
                   <td>${row.building}</td>
+                  <td>${row.property}</td>
                   <td>${row.address}</td>
                   <td>${row.tenant}</td>
                   <td>$${row.paidAmount.toLocaleString()}</td>
@@ -177,7 +188,7 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
                 </tr>
               `).join('')}
               <tr class="total-row">
-                <td colspan="3"><strong>TOTALES</strong></td>
+                <td colspan="4"><strong>TOTALES</strong></td>
                 <td><strong>$${totals.totalCollected.toLocaleString()}</strong></td>
                 <td><strong>$${totals.totalDebt.toLocaleString()}</strong></td>
               </tr>
@@ -204,10 +215,7 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
             <BarChart3 className="h-6 w-6 text-green-600" />
             <h3 className="text-xl font-semibold text-gray-900">Resumen Mensual de Cobranzas</h3>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-6 w-6" />
           </button>
         </div>
@@ -236,9 +244,9 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               >
-                <option value={2025}>2025</option>
-                <option value={2024}>2024</option>
-                <option value={2023}>2023</option>
+                {availableYears.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
               </select>
             </div>
 
@@ -263,142 +271,85 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({ receipts, tenants, prop
           </div>
         </div>
 
-        {/* Summary Stats */}
-        {selectedMonth && summaryData.length > 0 && (
+        {/* Summary Cards */}
+        {selectedMonth && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-green-600 mr-3" />
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-green-600">Total Cobranzas</p>
                   <p className="text-2xl font-bold text-green-900">${totals.totalCollected.toLocaleString()}</p>
                 </div>
+                <div className="text-green-600 text-3xl">$</div>
               </div>
             </div>
 
-            <div className="bg-red-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-8 w-8 text-red-600 mr-3" />
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-red-600">Total Adeudado</p>
                   <p className="text-2xl font-bold text-red-900">${totals.totalDebt.toLocaleString()}</p>
                 </div>
+                <div className="text-red-600 text-3xl">⚠</div>
               </div>
             </div>
 
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="flex items-center">
-                <Building2 className="h-8 w-8 text-blue-600 mr-3" />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-600">Propiedades</p>
                   <p className="text-2xl font-bold text-blue-900">{summaryData.length}</p>
                 </div>
+                <div className="text-blue-600 text-3xl">🏢</div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Summary Table */}
+        {/* Table */}
         {selectedMonth ? (
-          summaryData.length > 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Edificio
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Dirección
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Inquilino
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Monto Pagado
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Saldo Adeudado
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {summaryData.map((row, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <Building2 className="h-4 w-4 text-gray-400 mr-2" />
-                            <span className="text-sm font-medium text-gray-900">{row.building}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">{row.address}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">{row.tenant}</span>
-                          <div className="text-xs text-gray-500">{row.property}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-semibold ${
-                            row.paidAmount > 0 ? 'text-green-600' : 'text-gray-400'
-                          }`}>
-                            ${row.paidAmount.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-semibold ${
-                            row.totalDebt > 0 ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                            ${row.totalDebt.toLocaleString()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    
-                    {/* Totals Row */}
-                    <tr className="bg-gray-100 font-bold">
-                      <td colSpan={3} className="px-6 py-4 text-sm font-bold text-gray-900">
-                        TOTALES
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">EDIFICIO</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DIRECCIÓN</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">INQUILINO</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">MONTO PAGADO</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SALDO ADEUDADO</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {summaryData.map((row) => (
+                    <tr key={`${row.building}-${row.property}`} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{row.building}</div>
+                        <div className="text-xs text-gray-500">{row.property}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.address}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{row.tenant}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-bold text-green-600">
-                          ${totals.totalCollected.toLocaleString()}
-                        </span>
+                        <div className="text-sm font-semibold text-green-600">${row.paidAmount.toLocaleString()}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-bold text-red-600">
-                          ${totals.totalDebt.toLocaleString()}
-                        </span>
+                        <div className={`text-sm font-semibold ${row.totalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ${row.totalDebt.toLocaleString()}
+                        </div>
                       </td>
                     </tr>
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <div className="text-center py-12">
-              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No hay datos para este período</h3>
-              <p className="text-gray-500">No se encontraron recibos para {selectedMonth} {selectedYear}</p>
-            </div>
-          )
+          </div>
         ) : (
-          <div className="text-center py-12">
-            <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Selecciona un mes y año</h3>
-            <p className="text-gray-500">Elige el período para generar el resumen mensual</p>
+          <div className="text-center py-12 text-gray-500">
+            Selecciona un mes para ver el resumen.
           </div>
         )}
-
-        <div className="flex justify-end pt-6">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            Cerrar
-          </button>
-        </div>
       </div>
     </div>
   );
