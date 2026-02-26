@@ -18,13 +18,13 @@ interface DataManagerProps {
 }
 
 interface SystemData {
-  version: string;
-  exportDate: string;
+  version?: string;
+  exportDate?: string;
   properties: Property[];
   tenants: Tenant[];
   receipts: Receipt[];
   cashMovements: CashMovement[];
-  metadata: {
+  metadata?: {
     totalProperties: number;
     totalTenants: number;
     totalReceipts: number;
@@ -73,12 +73,12 @@ const DataManager: React.FC<DataManagerProps> = ({
 
     const dataStr = JSON.stringify(systemData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    
+
     const link = document.createElement('a');
     link.href = URL.createObjectURL(dataBlob);
     link.download = `sistema_alquileres_backup_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
-    
+
     URL.revokeObjectURL(link.href);
   };
 
@@ -87,7 +87,11 @@ const DataManager: React.FC<DataManagerProps> = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'application/json') {
+    // Algunos navegadores no llenan bien file.type, así que validamos por extensión también
+    const isJsonByName = file.name.toLowerCase().endsWith('.json');
+    const isJsonByType = file.type === 'application/json' || file.type === '';
+
+    if (!isJsonByType && !isJsonByName) {
       setImportStatus('error');
       setImportMessage('Por favor selecciona un archivo JSON válido.');
       setShowImportModal(true);
@@ -97,22 +101,45 @@ const DataManager: React.FC<DataManagerProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target?.result as string) as SystemData;
-        
-        // Validar estructura del archivo
-        if (!data.properties || !data.tenants || !data.receipts || !data.cashMovements) {
+        const raw = e.target?.result as string;
+        const data = JSON.parse(raw) as SystemData;
+
+        // Validar estructura mínima del archivo
+        if (
+          !data ||
+          !Array.isArray(data.properties) ||
+          !Array.isArray(data.tenants) ||
+          !Array.isArray(data.receipts) ||
+          !Array.isArray(data.cashMovements)
+        ) {
           throw new Error('Estructura de archivo inválida');
         }
 
-        setImportData(data);
+        // Si no tiene metadata (backups viejos), la generamos
+        const safeMetadata = data.metadata ?? {
+          totalProperties: data.properties.length,
+          totalTenants: data.tenants.length,
+          totalReceipts: data.receipts.length,
+          totalCashMovements: data.cashMovements.length,
+          lastUpdated: new Date().toISOString()
+        };
+
+        const safeData: SystemData = {
+          ...data,
+          version: data.version ?? '1.0.0',
+          exportDate: data.exportDate ?? new Date().toISOString(),
+          metadata: safeMetadata
+        };
+
+        setImportData(safeData);
         setImportStatus('success');
         setImportMessage(`
-          Archivo cargado correctamente:
-          • ${data.metadata.totalProperties} propiedades
-          • ${data.metadata.totalTenants} inquilinos  
-          • ${data.metadata.totalReceipts} recibos
-          • ${data.metadata.totalCashMovements} movimientos de caja
-          • Exportado el: ${new Date(data.exportDate).toLocaleDateString()}
+Archivo cargado correctamente:
+• ${safeMetadata.totalProperties} propiedades
+• ${safeMetadata.totalTenants} inquilinos
+• ${safeMetadata.totalReceipts} recibos
+• ${safeMetadata.totalCashMovements} movimientos de caja
+• Exportado el: ${safeData.exportDate ? new Date(safeData.exportDate).toLocaleDateString() : 'Fecha desconocida'}
         `);
         setShowImportModal(true);
       } catch (error) {
@@ -135,18 +162,18 @@ const DataManager: React.FC<DataManagerProps> = ({
     try {
       // Importar propiedades
       setProperties(importData.properties);
-      
+
       // Importar inquilinos
       setTenants(importData.tenants);
-      
+
       // Importar recibos
       setReceipts(importData.receipts);
-      
+
       // Importar movimientos de caja
       setCashMovements(importData.cashMovements);
 
       // Actualizar relaciones entre inquilinos y propiedades
-      importData.tenants.forEach(tenant => {
+      importData.tenants.forEach((tenant) => {
         if (tenant.propertyId) {
           updatePropertyTenant(tenant.propertyId, tenant.name);
         }
@@ -156,16 +183,16 @@ const DataManager: React.FC<DataManagerProps> = ({
       if (user && supabaseHook) {
         syncDataToSupabase(importData);
       }
+
       setImportStatus('success');
       setImportMessage('¡Datos importados exitosamente! Todos tus datos han sido restaurados.');
-      
+
       // Cerrar modal después de 2 segundos
       setTimeout(() => {
         setShowImportModal(false);
         setImportData(null);
         setImportStatus('idle');
       }, 2000);
-
     } catch (error) {
       setImportStatus('error');
       setImportMessage('Error al importar los datos. Por favor intenta nuevamente.');
@@ -179,17 +206,17 @@ const DataManager: React.FC<DataManagerProps> = ({
       for (const property of data.properties) {
         await supabaseHook.saveProperty(property);
       }
-      
+
       // Sincronizar inquilinos
       for (const tenant of data.tenants) {
         await supabaseHook.saveTenant(tenant);
       }
-      
+
       // Sincronizar recibos
       for (const receipt of data.receipts) {
         await supabaseHook.saveReceipt(receipt);
       }
-      
+
       // Sincronizar movimientos de caja
       for (const movement of data.cashMovements) {
         await supabaseHook.saveCashMovement(movement);
@@ -236,7 +263,7 @@ const DataManager: React.FC<DataManagerProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json"
+          accept=".json,application/json"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -248,9 +275,13 @@ const DataManager: React.FC<DataManagerProps> = ({
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                {importStatus === 'processing' ? 'Procesando...' : 
-                 importStatus === 'success' ? 'Importación Exitosa' : 
-                 importStatus === 'error' ? 'Error de Importación' : 'Importar Datos'}
+                {importStatus === 'processing'
+                  ? 'Procesando...'
+                  : importStatus === 'success'
+                  ? 'Importación Exitosa'
+                  : importStatus === 'error'
+                  ? 'Error de Importación'
+                  : 'Importar Datos'}
               </h3>
               {user && (
                 <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
@@ -273,11 +304,9 @@ const DataManager: React.FC<DataManagerProps> = ({
                 {importStatus === 'processing' && (
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 flex-shrink-0 mt-0.5"></div>
                 )}
-                
+
                 <div className="flex-1">
-                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">
-                    {importMessage}
-                  </pre>
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{importMessage}</pre>
                 </div>
               </div>
             </div>
