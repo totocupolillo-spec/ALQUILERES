@@ -25,13 +25,51 @@ interface SystemData {
   receipts: Receipt[];
   cashMovements: CashMovement[];
   metadata?: {
-    totalProperties: number;
-    totalTenants: number;
-    totalReceipts: number;
-    totalCashMovements: number;
-    lastUpdated: string;
+    totalProperties?: number;
+    totalTenants?: number;
+    totalReceipts?: number;
+    totalCashMovements?: number;
+    lastUpdated?: string;
   };
 }
+
+const isArray = (v: unknown): v is any[] => Array.isArray(v);
+
+const normalizeSystemData = (raw: any): SystemData => {
+  // Aceptamos 2 formatos:
+  // 1) { version, exportDate, properties, tenants, receipts, cashMovements, metadata }
+  // 2) { properties, tenants, receipts, cashMovements } (sin metadata)
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid JSON');
+  }
+
+  const data: SystemData = {
+    version: raw.version,
+    exportDate: raw.exportDate,
+    properties: raw.properties,
+    tenants: raw.tenants,
+    receipts: raw.receipts,
+    cashMovements: raw.cashMovements,
+    metadata: raw.metadata
+  };
+
+  if (!isArray(data.properties) || !isArray(data.tenants) || !isArray(data.receipts) || !isArray(data.cashMovements)) {
+    throw new Error('Invalid backup structure');
+  }
+
+  return {
+    ...data,
+    version: data.version || '1.0.0',
+    exportDate: data.exportDate || new Date().toISOString(),
+    metadata: {
+      totalProperties: data.metadata?.totalProperties ?? data.properties.length,
+      totalTenants: data.metadata?.totalTenants ?? data.tenants.length,
+      totalReceipts: data.metadata?.totalReceipts ?? data.receipts.length,
+      totalCashMovements: data.metadata?.totalCashMovements ?? data.cashMovements.length,
+      lastUpdated: data.metadata?.lastUpdated ?? new Date().toISOString()
+    }
+  };
+};
 
 const DataManager: React.FC<DataManagerProps> = ({
   properties,
@@ -87,9 +125,9 @@ const DataManager: React.FC<DataManagerProps> = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Algunos navegadores no llenan bien file.type, así que validamos por extensión también
+    // En algunos navegadores file.type puede venir vacío, por eso validamos también por extensión.
+    const isJsonByType = !file.type || file.type === 'application/json';
     const isJsonByName = file.name.toLowerCase().endsWith('.json');
-    const isJsonByType = file.type === 'application/json' || file.type === '';
 
     if (!isJsonByType && !isJsonByName) {
       setImportStatus('error');
@@ -101,46 +139,19 @@ const DataManager: React.FC<DataManagerProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const raw = e.target?.result as string;
-        const data = JSON.parse(raw) as SystemData;
+        const raw = JSON.parse(e.target?.result as string);
+        const data = normalizeSystemData(raw);
 
-        // Validar estructura mínima del archivo
-        if (
-          !data ||
-          !Array.isArray(data.properties) ||
-          !Array.isArray(data.tenants) ||
-          !Array.isArray(data.receipts) ||
-          !Array.isArray(data.cashMovements)
-        ) {
-          throw new Error('Estructura de archivo inválida');
-        }
-
-        // Si no tiene metadata (backups viejos), la generamos
-        const safeMetadata = data.metadata ?? {
-          totalProperties: data.properties.length,
-          totalTenants: data.tenants.length,
-          totalReceipts: data.receipts.length,
-          totalCashMovements: data.cashMovements.length,
-          lastUpdated: new Date().toISOString()
-        };
-
-        const safeData: SystemData = {
-          ...data,
-          version: data.version ?? '1.0.0',
-          exportDate: data.exportDate ?? new Date().toISOString(),
-          metadata: safeMetadata
-        };
-
-        setImportData(safeData);
+        setImportData(data);
         setImportStatus('success');
-        setImportMessage(`
-Archivo cargado correctamente:
-• ${safeMetadata.totalProperties} propiedades
-• ${safeMetadata.totalTenants} inquilinos
-• ${safeMetadata.totalReceipts} recibos
-• ${safeMetadata.totalCashMovements} movimientos de caja
-• Exportado el: ${safeData.exportDate ? new Date(safeData.exportDate).toLocaleDateString() : 'Fecha desconocida'}
-        `);
+        setImportMessage(
+          `Archivo cargado correctamente:\n` +
+          `• ${data.metadata?.totalProperties ?? data.properties.length} propiedades\n` +
+          `• ${data.metadata?.totalTenants ?? data.tenants.length} inquilinos\n` +
+          `• ${data.metadata?.totalReceipts ?? data.receipts.length} recibos\n` +
+          `• ${data.metadata?.totalCashMovements ?? data.cashMovements.length} movimientos de caja\n` +
+          `• Exportado el: ${data.exportDate ? new Date(data.exportDate).toLocaleDateString() : '-'}\n`
+        );
         setShowImportModal(true);
       } catch (error) {
         setImportStatus('error');
@@ -173,7 +184,7 @@ Archivo cargado correctamente:
       setCashMovements(importData.cashMovements);
 
       // Actualizar relaciones entre inquilinos y propiedades
-      importData.tenants.forEach((tenant) => {
+      importData.tenants.forEach(tenant => {
         if (tenant.propertyId) {
           updatePropertyTenant(tenant.propertyId, tenant.name);
         }
@@ -183,7 +194,6 @@ Archivo cargado correctamente:
       if (user && supabaseHook) {
         syncDataToSupabase(importData);
       }
-
       setImportStatus('success');
       setImportMessage('¡Datos importados exitosamente! Todos tus datos han sido restaurados.');
 
@@ -263,7 +273,7 @@ Archivo cargado correctamente:
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -275,13 +285,9 @@ Archivo cargado correctamente:
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                {importStatus === 'processing'
-                  ? 'Procesando...'
-                  : importStatus === 'success'
-                  ? 'Importación Exitosa'
-                  : importStatus === 'error'
-                  ? 'Error de Importación'
-                  : 'Importar Datos'}
+                {importStatus === 'processing' ? 'Procesando...' :
+                  importStatus === 'success' ? 'Importación Exitosa' :
+                    importStatus === 'error' ? 'Error de Importación' : 'Importar Datos'}
               </h3>
               {user && (
                 <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
@@ -306,7 +312,9 @@ Archivo cargado correctamente:
                 )}
 
                 <div className="flex-1">
-                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{importMessage}</pre>
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">
+                    {importMessage}
+                  </pre>
                 </div>
               </div>
             </div>
