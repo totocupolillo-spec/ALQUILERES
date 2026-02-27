@@ -15,7 +15,7 @@ import { firebaseSmokeTest } from './lib/firebaseTest';
 
 type TabType = 'dashboard' | 'properties' | 'tenants' | 'receipts' | 'history' | 'cash';
 
-// ✅ ORDEN FIJO DE EDIFICIOS (lo usa MonthlySummary y después lo usamos en los dropdowns)
+// ✅ ORDEN FIJO DE EDIFICIOS
 export const BUILDINGS = [
   'Ramos Mejia',
   'Limay',
@@ -36,7 +36,7 @@ export interface Tenant {
   email: string;
   phone: string;
   propertyId: number | null;
-  property: string; // Mantenemos para compatibilidad
+  property: string;
   contractStart: string;
   contractEnd: string;
   deposit: number;
@@ -100,7 +100,7 @@ export interface CashMovement {
   comment?: string;
 }
 
-// Funciones para localStorage
+// LocalStorage
 const saveToLocalStorage = (key: string, data: any) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -123,205 +123,35 @@ function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+
+  // ✅ Supabase SOLO para Auth (por ahora)
   const supabaseHook = useSupabase();
 
-  // ✅ Firebase (solo para prueba por ahora)
+  // ✅ Firebase para datos
   const firebaseDB = useFirebaseDB();
 
-  // Estados globales con persistencia
-  const [properties, setProperties] = useState<Property[]>(() =>
-    loadFromLocalStorage('properties', [
-      {
-        id: 1,
-        name: 'Departamento A-101',
-        type: 'departamento',
-        building: 'Edificio Central',
-        address: 'Av. Corrientes 1234, CABA',
-        rent: 25000,
-        expenses: 3000,
-        tenant: 'Juan Pérez',
-        status: 'ocupado',
-        contractStart: '2024-01-15',
-        contractEnd: '2025-01-15',
-        lastUpdated: '2025-01-15',
-        notes: 'Contrato renovado automáticamente'
-      },
-      {
-        id: 2,
-        name: 'Galpón B-205',
-        type: 'galpon',
-        building: 'Complejo Industrial',
-        address: 'Parque Industrial Sur, Lote 15',
-        rent: 45000,
-        expenses: 5000,
-        tenant: 'María García',
-        status: 'ocupado',
-        contractStart: '2023-06-01',
-        contractEnd: '2025-06-01',
-        lastUpdated: '2024-12-01',
-        notes: 'Inquilino de confianza, siempre paga puntual'
-      },
-      {
-        id: 3,
-        name: 'Local C-303',
-        type: 'local',
-        building: 'Centro Comercial',
-        address: 'Av. Santa Fe 2567, CABA',
-        rent: 35000,
-        expenses: 4000,
-        tenant: null,
-        status: 'disponible',
-        contractStart: '',
-        contractEnd: '',
-        lastUpdated: '2025-01-10',
-        notes: 'Disponible para alquiler inmediato'
-      },
-      {
-        id: 4,
-        name: 'Oficina D-401',
-        type: 'oficina',
-        building: 'Torre Empresarial',
-        address: 'Av. Libertador 5678, CABA',
-        rent: 28000,
-        expenses: 3500,
-        tenant: null,
-        status: 'disponible',
-        contractStart: '',
-        contractEnd: '',
-        lastUpdated: '2025-01-12',
-        notes: 'Oficina con vista panorámica'
-      }
-    ])
-  );
+  // ✅ Hook de datos que usará TODA la app (mismo shape que supabaseHook)
+  const dbHook = firebaseDB;
 
-  const [tenants, setTenants] = useState<Tenant[]>(() =>
-    loadFromLocalStorage('tenants', [
-      {
-        id: 1,
-        name: 'Juan Pérez',
-        email: 'juan.perez@email.com',
-        phone: '+54 11 1234-5678',
-        propertyId: 1,
-        property: 'Departamento A-101',
-        contractStart: '2024-01-15',
-        contractEnd: '2025-01-15',
-        deposit: 50000,
-        guarantor: {
-          name: 'María Pérez',
-          email: 'maria.perez@email.com',
-          phone: '+54 11 1234-5679'
-        },
-        balance: 0,
-        status: 'activo'
-      },
-      {
-        id: 2,
-        name: 'María García',
-        email: 'maria.garcia@email.com',
-        phone: '+54 11 8765-4321',
-        propertyId: 2,
-        property: 'Galpón B-205',
-        contractStart: '2023-06-01',
-        contractEnd: '2025-06-01',
-        deposit: 90000,
-        guarantor: {
-          name: 'Carlos García',
-          email: 'carlos.garcia@email.com',
-          phone: '+54 11 8765-4322'
-        },
-        balance: 15000,
-        status: 'activo'
-      },
-      {
-        id: 3,
-        name: 'Carlos López',
-        email: 'carlos.lopez@email.com',
-        phone: '+54 11 5555-0000',
-        propertyId: null,
-        property: 'Local C-303',
-        contractStart: '2024-11-01',
-        contractEnd: '2025-01-20',
-        deposit: 70000,
-        guarantor: {
-          name: 'Ana López',
-          email: 'ana.lopez@email.com',
-          phone: '+54 11 5555-0001'
-        },
-        balance: 22000,
-        status: 'vencido'
-      }
-    ])
-  );
+  // Estados con persistencia (fallback)
+  const [properties, setProperties] = useState<Property[]>(() => loadFromLocalStorage('properties', []));
+  const [tenants, setTenants] = useState<Tenant[]>(() => loadFromLocalStorage('tenants', []));
+  const [receipts, setReceipts] = useState<Receipt[]>(() => loadFromLocalStorage('receipts', []));
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() => loadFromLocalStorage('cashMovements', []));
 
-  const [receipts, setReceipts] = useState<Receipt[]>(() =>
-    loadFromLocalStorage('receipts', [
-      {
-        id: 1,
-        receiptNumber: 'REC-2025-001',
-        tenant: 'Juan Pérez',
-        property: 'Departamento A-101',
-        building: 'Edificio Central',
-        month: 'Enero',
-        year: 2025,
-        rent: 25000,
-        expenses: 3000,
-        otherCharges: [{ description: 'Limpieza adicional', amount: 1500 }],
-        previousBalance: 0,
-        total: 29500,
-        paidAmount: 29500,
-        remainingBalance: 0,
-        currency: 'ARS',
-        paymentMethod: 'transferencia',
-        status: 'pagado',
-        dueDate: '2025-01-10',
-        createdDate: '2025-01-01'
-      }
-    ])
-  );
+  // ✅ Test Firebase (solo al iniciar)
+  useEffect(() => {
+    firebaseSmokeTest();
+  }, []);
 
-  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() =>
-    loadFromLocalStorage('cashMovements', [
-      {
-        id: 1,
-        type: 'income',
-        description: 'Pago alquiler - Juan Pérez',
-        amount: 29500,
-        currency: 'ARS',
-        date: '2025-01-15',
-        tenant: 'Juan Pérez',
-        property: 'Departamento A-101'
-      },
-      {
-        id: 2,
-        type: 'delivery',
-        description: 'Entrega al propietario',
-        amount: 15000,
-        currency: 'ARS',
-        date: '2025-01-10'
-      },
-      {
-        id: 3,
-        type: 'income',
-        description: 'Pago alquiler - Carlos López',
-        amount: 800,
-        currency: 'USD',
-        date: '2025-01-08',
-        tenant: 'Carlos López',
-        property: 'Local C-303'
-      }
-    ])
-  );
-
-  // Verificar autenticación al cargar
+  // ✅ Auth con Supabase (solo login)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
@@ -329,20 +159,20 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Cargar datos desde Supabase cuando el usuario se autentica
+  // ✅ Cargar datos desde Firebase cuando el usuario se autentica
   useEffect(() => {
     if (user) {
-      loadAllDataFromSupabase();
+      loadAllDataFromFirebase();
     }
   }, [user]);
 
-  const loadAllDataFromSupabase = async () => {
+  const loadAllDataFromFirebase = async () => {
     try {
       const [propertiesData, tenantsData, receiptsData, cashMovementsData] = await Promise.all([
-        supabaseHook.loadProperties(),
-        supabaseHook.loadTenants(),
-        supabaseHook.loadReceipts(),
-        supabaseHook.loadCashMovements()
+        dbHook.loadProperties(),
+        dbHook.loadTenants(),
+        dbHook.loadReceipts(),
+        dbHook.loadCashMovements()
       ]);
 
       if (propertiesData.length > 0) setProperties(propertiesData);
@@ -350,47 +180,11 @@ function App() {
       if (receiptsData.length > 0) setReceipts(receiptsData);
       if (cashMovementsData.length > 0) setCashMovements(cashMovementsData);
     } catch (error) {
-      console.error('Error loading data from Supabase:', error);
+      console.error('Error loading data from Firebase:', error);
     }
   };
 
-  // ✅ Test de conexión a Firebase (solo al iniciar)
-  useEffect(() => {
-    firebaseSmokeTest();
-  }, []);
-
-  // ✅ Test del hook FirebaseDB (solo al iniciar)
-  useEffect(() => {
-    (async () => {
-      try {
-        const props = await firebaseDB.loadProperties();
-        console.log('🔥 Firebase properties:', props);
-
-        await firebaseDB.saveProperty({
-          id: 999999,
-          name: 'TEST FIREBASE',
-          type: 'otro',
-          building: 'Otro',
-          address: 'TEST',
-          rent: 0,
-          expenses: 0,
-          tenant: null,
-          status: 'disponible',
-          contractStart: '',
-          contractEnd: '',
-          lastUpdated: new Date().toISOString().slice(0, 10),
-          notes: 'Registro de prueba'
-        });
-
-        console.log('✅ Firebase saveProperty OK');
-      } catch (e) {
-        console.error('❌ FirebaseDB test error:', e);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Guardar en localStorage cuando cambien los datos
+  // Guardar en localStorage
   useEffect(() => {
     saveToLocalStorage('properties', properties);
   }, [properties]);
@@ -416,20 +210,17 @@ function App() {
     { id: 'cash', label: 'Arqueo', icon: Wallet },
   ] as const;
 
-  // Función para agregar movimiento de caja
+  // ✅ Agregar movimiento de caja (ahora Firebase)
   const addCashMovement = (movement: Omit<CashMovement, 'id'>) => {
-    const newMovement: CashMovement = {
-      ...movement,
-      id: Date.now()
-    };
+    const newMovement: CashMovement = { ...movement, id: Date.now() };
     setCashMovements(prev => [newMovement, ...prev]);
 
     if (user) {
-      supabaseHook.saveCashMovement(movement);
+      dbHook.saveCashMovement(newMovement);
     }
   };
 
-  // Función para actualizar saldo de inquilino
+  // ✅ Actualizar saldo de inquilino (ahora Firebase)
   const updateTenantBalance = (tenantName: string, newBalance: number) => {
     setTenants(prev =>
       prev.map(tenant => (tenant.name === tenantName ? { ...tenant, balance: newBalance } : tenant))
@@ -438,23 +229,23 @@ function App() {
     if (user) {
       const tenant = tenants.find(t => t.name === tenantName);
       if (tenant) {
-        supabaseHook.saveTenant({ ...tenant, balance: newBalance });
+        dbHook.saveTenant({ ...tenant, balance: newBalance });
       }
     }
   };
 
-  // Función para actualizar propiedad cuando se asigna/cambia inquilino
+  // ✅ Actualizar propiedad cuando se asigna/cambia inquilino (ahora Firebase)
   const updatePropertyTenant = (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => {
     setProperties(prev =>
       prev.map(property => {
         if (oldPropertyId && property.id === oldPropertyId) {
           const updatedProperty = { ...property, tenant: null, status: 'disponible' as const };
-          if (user) supabaseHook.saveProperty(updatedProperty);
+          if (user) dbHook.saveProperty(updatedProperty);
           return updatedProperty;
         }
         if (property.id === propertyId) {
           const updatedProperty = { ...property, tenant: tenantName, status: 'ocupado' as const };
-          if (user) supabaseHook.saveProperty(updatedProperty);
+          if (user) dbHook.saveProperty(updatedProperty);
           return updatedProperty;
         }
         return property;
@@ -462,7 +253,7 @@ function App() {
     );
   };
 
-  // Mostrar pantalla de carga
+  // Pantalla de carga
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -474,7 +265,7 @@ function App() {
     );
   }
 
-  // Mostrar componente de autenticación si no hay usuario
+  // Auth
   if (!user) {
     return <AuthComponent />;
   }
@@ -483,8 +274,10 @@ function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard tenants={tenants} receipts={receipts} properties={properties} setActiveTab={setActiveTab} />;
+
       case 'properties':
         return <PropertiesManager properties={properties} setProperties={setProperties} />;
+
       case 'tenants':
         return (
           <TenantsManager
@@ -494,6 +287,7 @@ function App() {
             updatePropertyTenant={updatePropertyTenant}
           />
         );
+
       case 'receipts':
         return (
           <ReceiptsManager
@@ -503,21 +297,24 @@ function App() {
             setReceipts={setReceipts}
             addCashMovement={addCashMovement}
             updateTenantBalance={updateTenantBalance}
-            supabaseHook={supabaseHook}
+            supabaseHook={dbHook}
             user={user}
           />
         );
+
       case 'history':
         return <PaymentsHistory receipts={receipts} />;
+
       case 'cash':
         return (
           <CashRegister
             cashMovements={cashMovements}
             setCashMovements={setCashMovements}
-            supabaseHook={supabaseHook}
+            supabaseHook={dbHook}
             user={user}
           />
         );
+
       default:
         return <Dashboard tenants={tenants} receipts={receipts} properties={properties} setActiveTab={setActiveTab} />;
     }
@@ -532,7 +329,7 @@ function App() {
             <div className="flex items-center space-x-3">
               <Building2 className="h-8 w-8 text-blue-600" />
               <h1 className="text-xl font-bold text-gray-900">Sistema de Alquileres</h1>
-              {supabaseHook.loading && (
+              {dbHook.loading && (
                 <div className="flex items-center space-x-2 text-blue-600">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                   <span className="text-sm">Sincronizando...</span>
@@ -552,9 +349,10 @@ function App() {
                 setCashMovements={setCashMovements}
                 updateTenantBalance={updateTenantBalance}
                 updatePropertyTenant={updatePropertyTenant}
-                supabaseHook={supabaseHook}
+                supabaseHook={dbHook}
                 user={user}
               />
+
               <div className="relative">
                 <Search className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                 <input
@@ -563,10 +361,12 @@ function App() {
                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+
               <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
                 <Bell className="h-6 w-6" />
                 <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full"></span>
               </button>
+
               <button
                 onClick={() => supabase.auth.signOut()}
                 className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
@@ -605,11 +405,11 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {supabaseHook.error && (
+        {dbHook.error && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center">
-              <div className="text-red-600 text-sm">{supabaseHook.error}</div>
-              <button onClick={() => supabaseHook.setError(null)} className="ml-auto text-red-600 hover:text-red-800">
+              <div className="text-red-600 text-sm">{dbHook.error}</div>
+              <button onClick={() => dbHook.setError(null)} className="ml-auto text-red-600 hover:text-red-800">
                 ×
               </button>
             </div>
