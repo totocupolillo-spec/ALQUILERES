@@ -13,6 +13,20 @@ import { supabase } from './lib/supabase';
 
 type TabType = 'dashboard' | 'properties' | 'tenants' | 'receipts' | 'history' | 'cash';
 
+// ✅ ORDEN FIJO DE EDIFICIOS (lo usa MonthlySummary y después lo usamos en los dropdowns)
+export const BUILDINGS = [
+  'Ramos Mejia',
+  'Limay',
+  'Bolivar',
+  'Alvear',
+  'Faena',
+  'Gaboto',
+  'Gazcon',
+  'Otro'
+] as const;
+
+export type BuildingType = typeof BUILDINGS[number];
+
 // Interfaces globales
 export interface Tenant {
   id: number;
@@ -108,202 +122,198 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const supabaseHook = useSupabase();
-  
+
   // Estados globales con persistencia
-  const [properties, setProperties] = useState<Property[]>(() => 
+  const [properties, setProperties] = useState<Property[]>(() =>
     loadFromLocalStorage('properties', [
-    {
-      id: 1,
-      name: 'Departamento A-101',
-      type: 'departamento',
-      building: 'Edificio Central',
-      address: 'Av. Corrientes 1234, CABA',
-      rent: 25000,
-      expenses: 3000,
-      tenant: 'Juan Pérez',
-      status: 'ocupado',
-      contractStart: '2024-01-15',
-      contractEnd: '2025-01-15',
-      lastUpdated: '2025-01-15',
-      notes: 'Contrato renovado automáticamente'
-    },
-    {
-      id: 2,
-      name: 'Galpón B-205',
-      type: 'galpon',
-      building: 'Complejo Industrial',
-      address: 'Parque Industrial Sur, Lote 15',
-      rent: 45000,
-      expenses: 5000,
-      tenant: 'María García',
-      status: 'ocupado',
-      contractStart: '2023-06-01',
-      contractEnd: '2025-06-01',
-      lastUpdated: '2024-12-01',
-      notes: 'Inquilino de confianza, siempre paga puntual'
-    },
-    {
-      id: 3,
-      name: 'Local C-303',
-      type: 'local',
-      building: 'Centro Comercial',
-      address: 'Av. Santa Fe 2567, CABA',
-      rent: 35000,
-      expenses: 4000,
-      tenant: null,
-      status: 'disponible',
-      contractStart: '',
-      contractEnd: '',
-      lastUpdated: '2025-01-10',
-      notes: 'Disponible para alquiler inmediato'
-    },
-    {
-      id: 4,
-      name: 'Oficina D-401',
-      type: 'oficina',
-      building: 'Torre Empresarial',
-      address: 'Av. Libertador 5678, CABA',
-      rent: 28000,
-      expenses: 3500,
-      tenant: null,
-      status: 'disponible',
-      contractStart: '',
-      contractEnd: '',
-      lastUpdated: '2025-01-12',
-      notes: 'Oficina con vista panorámica'
-    }
-  ])
+      {
+        id: 1,
+        name: 'Departamento A-101',
+        type: 'departamento',
+        building: 'Edificio Central',
+        address: 'Av. Corrientes 1234, CABA',
+        rent: 25000,
+        expenses: 3000,
+        tenant: 'Juan Pérez',
+        status: 'ocupado',
+        contractStart: '2024-01-15',
+        contractEnd: '2025-01-15',
+        lastUpdated: '2025-01-15',
+        notes: 'Contrato renovado automáticamente'
+      },
+      {
+        id: 2,
+        name: 'Galpón B-205',
+        type: 'galpon',
+        building: 'Complejo Industrial',
+        address: 'Parque Industrial Sur, Lote 15',
+        rent: 45000,
+        expenses: 5000,
+        tenant: 'María García',
+        status: 'ocupado',
+        contractStart: '2023-06-01',
+        contractEnd: '2025-06-01',
+        lastUpdated: '2024-12-01',
+        notes: 'Inquilino de confianza, siempre paga puntual'
+      },
+      {
+        id: 3,
+        name: 'Local C-303',
+        type: 'local',
+        building: 'Centro Comercial',
+        address: 'Av. Santa Fe 2567, CABA',
+        rent: 35000,
+        expenses: 4000,
+        tenant: null,
+        status: 'disponible',
+        contractStart: '',
+        contractEnd: '',
+        lastUpdated: '2025-01-10',
+        notes: 'Disponible para alquiler inmediato'
+      },
+      {
+        id: 4,
+        name: 'Oficina D-401',
+        type: 'oficina',
+        building: 'Torre Empresarial',
+        address: 'Av. Libertador 5678, CABA',
+        rent: 28000,
+        expenses: 3500,
+        tenant: null,
+        status: 'disponible',
+        contractStart: '',
+        contractEnd: '',
+        lastUpdated: '2025-01-12',
+        notes: 'Oficina con vista panorámica'
+      }
+    ])
   );
 
   const [tenants, setTenants] = useState<Tenant[]>(() =>
     loadFromLocalStorage('tenants', [
-    {
-      id: 1,
-      name: 'Juan Pérez',
-      email: 'juan.perez@email.com',
-      phone: '+54 11 1234-5678',
-      propertyId: 1,
-      property: 'Departamento A-101',
-      contractStart: '2024-01-15',
-      contractEnd: '2025-01-15',
-      deposit: 50000,
-      guarantor: {
-        name: 'María Pérez',
-        email: 'maria.perez@email.com',
-        phone: '+54 11 1234-5679'
+      {
+        id: 1,
+        name: 'Juan Pérez',
+        email: 'juan.perez@email.com',
+        phone: '+54 11 1234-5678',
+        propertyId: 1,
+        property: 'Departamento A-101',
+        contractStart: '2024-01-15',
+        contractEnd: '2025-01-15',
+        deposit: 50000,
+        guarantor: {
+          name: 'María Pérez',
+          email: 'maria.perez@email.com',
+          phone: '+54 11 1234-5679'
+        },
+        balance: 0,
+        status: 'activo'
       },
-      balance: 0,
-      status: 'activo'
-    },
-    {
-      id: 2,
-      name: 'María García',
-      email: 'maria.garcia@email.com',
-      phone: '+54 11 8765-4321',
-      propertyId: 2,
-      property: 'Galpón B-205',
-      contractStart: '2023-06-01',
-      contractEnd: '2025-06-01',
-      deposit: 90000,
-      guarantor: {
-        name: 'Carlos García',
-        email: 'carlos.garcia@email.com',
-        phone: '+54 11 8765-4322'
+      {
+        id: 2,
+        name: 'María García',
+        email: 'maria.garcia@email.com',
+        phone: '+54 11 8765-4321',
+        propertyId: 2,
+        property: 'Galpón B-205',
+        contractStart: '2023-06-01',
+        contractEnd: '2025-06-01',
+        deposit: 90000,
+        guarantor: {
+          name: 'Carlos García',
+          email: 'carlos.garcia@email.com',
+          phone: '+54 11 8765-4322'
+        },
+        balance: 15000,
+        status: 'activo'
       },
-      balance: 15000,
-      status: 'activo'
-    },
-    {
-      id: 3,
-      name: 'Carlos López',
-      email: 'carlos.lopez@email.com',
-      phone: '+54 11 5555-0000',
-      propertyId: null,
-      property: 'Local C-303',
-      contractStart: '2024-11-01',
-      contractEnd: '2025-01-20',
-      deposit: 70000,
-      guarantor: {
-        name: 'Ana López',
-        email: 'ana.lopez@email.com',
-        phone: '+54 11 5555-0001'
-      },
-      balance: 22000,
-      status: 'vencido'
-    }
-  ])
+      {
+        id: 3,
+        name: 'Carlos López',
+        email: 'carlos.lopez@email.com',
+        phone: '+54 11 5555-0000',
+        propertyId: null,
+        property: 'Local C-303',
+        contractStart: '2024-11-01',
+        contractEnd: '2025-01-20',
+        deposit: 70000,
+        guarantor: {
+          name: 'Ana López',
+          email: 'ana.lopez@email.com',
+          phone: '+54 11 5555-0001'
+        },
+        balance: 22000,
+        status: 'vencido'
+      }
+    ])
   );
 
   const [receipts, setReceipts] = useState<Receipt[]>(() =>
     loadFromLocalStorage('receipts', [
-    {
-      id: 1,
-      receiptNumber: 'REC-2025-001',
-      tenant: 'Juan Pérez',
-      property: 'Departamento A-101',
-      building: 'Edificio Central',
-      month: 'Enero',
-      year: 2025,
-      rent: 25000,
-      expenses: 3000,
-      otherCharges: [
-        { description: 'Limpieza adicional', amount: 1500 }
-      ],
-      previousBalance: 0,
-      total: 29500,
-      paidAmount: 29500,
-      remainingBalance: 0,
-      currency: 'ARS',
-      paymentMethod: 'transferencia',
-      status: 'pagado',
-      dueDate: '2025-01-10',
-      createdDate: '2025-01-01'
-    }
-  ])
+      {
+        id: 1,
+        receiptNumber: 'REC-2025-001',
+        tenant: 'Juan Pérez',
+        property: 'Departamento A-101',
+        building: 'Edificio Central',
+        month: 'Enero',
+        year: 2025,
+        rent: 25000,
+        expenses: 3000,
+        otherCharges: [{ description: 'Limpieza adicional', amount: 1500 }],
+        previousBalance: 0,
+        total: 29500,
+        paidAmount: 29500,
+        remainingBalance: 0,
+        currency: 'ARS',
+        paymentMethod: 'transferencia',
+        status: 'pagado',
+        dueDate: '2025-01-10',
+        createdDate: '2025-01-01'
+      }
+    ])
   );
 
   const [cashMovements, setCashMovements] = useState<CashMovement[]>(() =>
     loadFromLocalStorage('cashMovements', [
-    {
-      id: 1,
-      type: 'income',
-      description: 'Pago alquiler - Juan Pérez',
-      amount: 29500,
-      currency: 'ARS',
-      date: '2025-01-15',
-      tenant: 'Juan Pérez',
-      property: 'Departamento A-101'
-    },
-    {
-      id: 2,
-      type: 'delivery',
-      description: 'Entrega al propietario',
-      amount: 15000,
-      currency: 'ARS',
-      date: '2025-01-10'
-    },
-    {
-      id: 3,
-      type: 'income',
-      description: 'Pago alquiler - Carlos López',
-      amount: 800,
-      currency: 'USD',
-      date: '2025-01-08',
-      tenant: 'Carlos López',
-      property: 'Local C-303'
-    }
-  ])
+      {
+        id: 1,
+        type: 'income',
+        description: 'Pago alquiler - Juan Pérez',
+        amount: 29500,
+        currency: 'ARS',
+        date: '2025-01-15',
+        tenant: 'Juan Pérez',
+        property: 'Departamento A-101'
+      },
+      {
+        id: 2,
+        type: 'delivery',
+        description: 'Entrega al propietario',
+        amount: 15000,
+        currency: 'ARS',
+        date: '2025-01-10'
+      },
+      {
+        id: 3,
+        type: 'income',
+        description: 'Pago alquiler - Carlos López',
+        amount: 800,
+        currency: 'USD',
+        date: '2025-01-08',
+        tenant: 'Carlos López',
+        property: 'Local C-303'
+      }
+    ])
   );
 
   // Verificar autenticación al cargar
   useEffect(() => {
-    // Obtener sesión actual
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Escuchar cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
@@ -370,8 +380,7 @@ function App() {
       id: Date.now()
     };
     setCashMovements(prev => [newMovement, ...prev]);
-    
-    // Guardar en Supabase si el usuario está autenticado
+
     if (user) {
       supabaseHook.saveCashMovement(movement);
     }
@@ -379,13 +388,12 @@ function App() {
 
   // Función para actualizar saldo de inquilino
   const updateTenantBalance = (tenantName: string, newBalance: number) => {
-    setTenants(prev => prev.map(tenant => 
-      tenant.name === tenantName 
+    setTenants(prev => prev.map(tenant =>
+      tenant.name === tenantName
         ? { ...tenant, balance: newBalance }
         : tenant
     ));
-    
-    // Actualizar en Supabase si el usuario está autenticado
+
     if (user) {
       const tenant = tenants.find(t => t.name === tenantName);
       if (tenant) {
@@ -397,13 +405,11 @@ function App() {
   // Función para actualizar propiedad cuando se asigna/cambia inquilino
   const updatePropertyTenant = (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => {
     setProperties(prev => prev.map(property => {
-      // Liberar propiedad anterior
       if (oldPropertyId && property.id === oldPropertyId) {
         const updatedProperty = { ...property, tenant: null, status: 'disponible' as const };
         if (user) supabaseHook.saveProperty(updatedProperty);
         return updatedProperty;
       }
-      // Asignar nueva propiedad
       if (property.id === propertyId) {
         const updatedProperty = { ...property, tenant: tenantName, status: 'ocupado' as const };
         if (user) supabaseHook.saveProperty(updatedProperty);
@@ -413,7 +419,6 @@ function App() {
     }));
   };
 
-  // Mostrar pantalla de carga
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -425,7 +430,6 @@ function App() {
     );
   }
 
-  // Mostrar componente de autenticación si no hay usuario
   if (!user) {
     return <AuthComponent />;
   }
@@ -433,41 +437,49 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard 
-          tenants={tenants} 
-          receipts={receipts} 
-          properties={properties} 
-          setActiveTab={setActiveTab}
-        />;
+        return (
+          <Dashboard
+            tenants={tenants}
+            receipts={receipts}
+            properties={properties}
+            setActiveTab={setActiveTab}
+          />
+        );
       case 'properties':
         return <PropertiesManager properties={properties} setProperties={setProperties} />;
       case 'tenants':
-        return <TenantsManager 
-          tenants={tenants} 
-          setTenants={setTenants} 
-          properties={properties}
-          updatePropertyTenant={updatePropertyTenant}
-        />;
+        return (
+          <TenantsManager
+            tenants={tenants}
+            setTenants={setTenants}
+            properties={properties}
+            updatePropertyTenant={updatePropertyTenant}
+          />
+        );
       case 'receipts':
-        return <ReceiptsManager 
-          tenants={tenants} 
-          properties={properties}
-          receipts={receipts} 
-          setReceipts={setReceipts}
-          addCashMovement={addCashMovement}
-          updateTenantBalance={updateTenantBalance}
-          supabaseHook={supabaseHook}
-          user={user}
-        />;
+        return (
+          <ReceiptsManager
+            tenants={tenants}
+            properties={properties}
+            receipts={receipts}
+            setReceipts={setReceipts}
+            addCashMovement={addCashMovement}
+            updateTenantBalance={updateTenantBalance}
+            supabaseHook={supabaseHook}
+            user={user}
+          />
+        );
       case 'history':
         return <PaymentsHistory receipts={receipts} />;
       case 'cash':
-        return <CashRegister 
-          cashMovements={cashMovements} 
-          setCashMovements={setCashMovements}
-          supabaseHook={supabaseHook}
-          user={user}
-        />;
+        return (
+          <CashRegister
+            cashMovements={cashMovements}
+            setCashMovements={setCashMovements}
+            supabaseHook={supabaseHook}
+            user={user}
+          />
+        );
       default:
         return <Dashboard tenants={tenants} receipts={receipts} properties={properties} />;
     }
@@ -489,9 +501,9 @@ function App() {
                 </div>
               )}
             </div>
-            
+
             <div className="flex items-center space-x-4">
-              <DataManager 
+              <DataManager
                 properties={properties}
                 tenants={tenants}
                 receipts={receipts}
@@ -538,11 +550,10 @@ function App() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   <Icon className="h-5 w-5" />
                   <span>{tab.label}</span>
