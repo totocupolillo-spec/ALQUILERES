@@ -348,23 +348,27 @@ function App() {
     }
   };
 
-  // Guardar en localStorage cuando cambien los datos
-  useEffect(() => {
-    saveToLocalStorage('properties', properties);
-  }, [properties]);
+ // Test de conexión a Firebase (solo al iniciar)
+useEffect(() => {
+  firebaseSmokeTest();
+}, []);
 
-  useEffect(() => {
-    saveToLocalStorage('tenants', tenants);
-  }, [tenants]);
+// Guardar en localStorage cuando cambien los datos
+useEffect(() => {
+  saveToLocalStorage('properties', properties);
+}, [properties]);
 
-  useEffect(() => {
-    saveToLocalStorage('receipts', receipts);
-  }, [receipts]);
+useEffect(() => {
+  saveToLocalStorage('tenants', tenants);
+}, [tenants]);
 
-  useEffect(() => {
-    saveToLocalStorage('cashMovements', cashMovements);
-  }, [cashMovements]);
+useEffect(() => {
+  saveToLocalStorage('receipts', receipts);
+}, [receipts]);
 
+useEffect(() => {
+  saveToLocalStorage('cashMovements', cashMovements);
+}, [cashMovements]);
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'properties', label: 'Propiedades', icon: Building2 },
