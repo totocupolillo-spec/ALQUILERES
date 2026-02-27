@@ -1,7 +1,7 @@
-import { useFirebaseDB } from './hooks/useFirebaseDB';
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, Receipt, Calendar, BarChart3, Plus, Search, Bell, Wallet } from 'lucide-react';
+import { Building2, Users, Receipt, Calendar, BarChart3, Search, Bell, Wallet } from 'lucide-react';
 import { useSupabase } from './hooks/useSupabase';
+import { useFirebaseDB } from './hooks/useFirebaseDB';
 import Dashboard from './components/Dashboard';
 import PropertiesManager from './components/PropertiesManager';
 import TenantsManager from './components/TenantsManager';
@@ -124,6 +124,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const supabaseHook = useSupabase();
+
+  // ✅ Firebase (solo para prueba por ahora)
+  const firebaseDB = useFirebaseDB();
 
   // Estados globales con persistencia
   const [properties, setProperties] = useState<Property[]>(() =>
@@ -316,7 +319,9 @@ function App() {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
@@ -349,27 +354,59 @@ function App() {
     }
   };
 
- // Test de conexión a Firebase (solo al iniciar)
-useEffect(() => {
-  firebaseSmokeTest();
-}, []);
+  // ✅ Test de conexión a Firebase (solo al iniciar)
+  useEffect(() => {
+    firebaseSmokeTest();
+  }, []);
 
-// Guardar en localStorage cuando cambien los datos
-useEffect(() => {
-  saveToLocalStorage('properties', properties);
-}, [properties]);
+  // ✅ Test del hook FirebaseDB (solo al iniciar)
+  useEffect(() => {
+    (async () => {
+      try {
+        const props = await firebaseDB.loadProperties();
+        console.log('🔥 Firebase properties:', props);
 
-useEffect(() => {
-  saveToLocalStorage('tenants', tenants);
-}, [tenants]);
+        await firebaseDB.saveProperty({
+          id: 999999,
+          name: 'TEST FIREBASE',
+          type: 'otro',
+          building: 'Otro',
+          address: 'TEST',
+          rent: 0,
+          expenses: 0,
+          tenant: null,
+          status: 'disponible',
+          contractStart: '',
+          contractEnd: '',
+          lastUpdated: new Date().toISOString().slice(0, 10),
+          notes: 'Registro de prueba'
+        });
 
-useEffect(() => {
-  saveToLocalStorage('receipts', receipts);
-}, [receipts]);
+        console.log('✅ Firebase saveProperty OK');
+      } catch (e) {
+        console.error('❌ FirebaseDB test error:', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-useEffect(() => {
-  saveToLocalStorage('cashMovements', cashMovements);
-}, [cashMovements]);
+  // Guardar en localStorage cuando cambien los datos
+  useEffect(() => {
+    saveToLocalStorage('properties', properties);
+  }, [properties]);
+
+  useEffect(() => {
+    saveToLocalStorage('tenants', tenants);
+  }, [tenants]);
+
+  useEffect(() => {
+    saveToLocalStorage('receipts', receipts);
+  }, [receipts]);
+
+  useEffect(() => {
+    saveToLocalStorage('cashMovements', cashMovements);
+  }, [cashMovements]);
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'properties', label: 'Propiedades', icon: Building2 },
@@ -394,11 +431,9 @@ useEffect(() => {
 
   // Función para actualizar saldo de inquilino
   const updateTenantBalance = (tenantName: string, newBalance: number) => {
-    setTenants(prev => prev.map(tenant =>
-      tenant.name === tenantName
-        ? { ...tenant, balance: newBalance }
-        : tenant
-    ));
+    setTenants(prev =>
+      prev.map(tenant => (tenant.name === tenantName ? { ...tenant, balance: newBalance } : tenant))
+    );
 
     if (user) {
       const tenant = tenants.find(t => t.name === tenantName);
@@ -410,21 +445,24 @@ useEffect(() => {
 
   // Función para actualizar propiedad cuando se asigna/cambia inquilino
   const updatePropertyTenant = (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => {
-    setProperties(prev => prev.map(property => {
-      if (oldPropertyId && property.id === oldPropertyId) {
-        const updatedProperty = { ...property, tenant: null, status: 'disponible' as const };
-        if (user) supabaseHook.saveProperty(updatedProperty);
-        return updatedProperty;
-      }
-      if (property.id === propertyId) {
-        const updatedProperty = { ...property, tenant: tenantName, status: 'ocupado' as const };
-        if (user) supabaseHook.saveProperty(updatedProperty);
-        return updatedProperty;
-      }
-      return property;
-    }));
+    setProperties(prev =>
+      prev.map(property => {
+        if (oldPropertyId && property.id === oldPropertyId) {
+          const updatedProperty = { ...property, tenant: null, status: 'disponible' as const };
+          if (user) supabaseHook.saveProperty(updatedProperty);
+          return updatedProperty;
+        }
+        if (property.id === propertyId) {
+          const updatedProperty = { ...property, tenant: tenantName, status: 'ocupado' as const };
+          if (user) supabaseHook.saveProperty(updatedProperty);
+          return updatedProperty;
+        }
+        return property;
+      })
+    );
   };
 
+  // Mostrar pantalla de carga
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -436,6 +474,7 @@ useEffect(() => {
     );
   }
 
+  // Mostrar componente de autenticación si no hay usuario
   if (!user) {
     return <AuthComponent />;
   }
@@ -443,14 +482,7 @@ useEffect(() => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return (
-          <Dashboard
-            tenants={tenants}
-            receipts={receipts}
-            properties={properties}
-            setActiveTab={setActiveTab}
-          />
-        );
+        return <Dashboard tenants={tenants} receipts={receipts} properties={properties} setActiveTab={setActiveTab} />;
       case 'properties':
         return <PropertiesManager properties={properties} setProperties={setProperties} />;
       case 'tenants':
@@ -487,7 +519,7 @@ useEffect(() => {
           />
         );
       default:
-        return <Dashboard tenants={tenants} receipts={receipts} properties={properties} />;
+        return <Dashboard tenants={tenants} receipts={receipts} properties={properties} setActiveTab={setActiveTab} />;
     }
   };
 
@@ -550,16 +582,17 @@ useEffect(() => {
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
-            {tabs.map((tab) => {
+            {tabs.map(tab => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
                 >
                   <Icon className="h-5 w-5" />
                   <span>{tab.label}</span>
@@ -575,13 +608,8 @@ useEffect(() => {
         {supabaseHook.error && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center">
-              <div className="text-red-600 text-sm">
-                {supabaseHook.error}
-              </div>
-              <button
-                onClick={() => supabaseHook.setError(null)}
-                className="ml-auto text-red-600 hover:text-red-800"
-              >
+              <div className="text-red-600 text-sm">{supabaseHook.error}</div>
+              <button onClick={() => supabaseHook.setError(null)} className="ml-auto text-red-600 hover:text-red-800">
                 ×
               </button>
             </div>
