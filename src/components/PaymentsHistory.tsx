@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Filter, Download, Search, Printer, X, Eye } from 'lucide-react';
+import { Filter, Download, Search, Printer, X, Eye } from 'lucide-react';
 import { Receipt } from '../App';
 
 interface PaymentsHistoryProps {
@@ -7,6 +7,14 @@ interface PaymentsHistoryProps {
 }
 
 const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
+  // helpers para evitar pantalla blanca por undefined/null
+  const num = (v: any): number => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const n = parseFloat(String(v ?? ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const money = (v: any): string => num(v).toLocaleString();
+
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -20,56 +28,83 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
 
   // Convertir receipts a formato de payments para compatibilidad
   const payments = useMemo(() => {
-    return receipts.map(receipt => ({
-      id: receipt.id,
-      receiptNumber: receipt.receiptNumber,
-      tenant: receipt.tenant,
-      property: receipt.property,
-      building: receipt.building,
-      amount: receipt.paidAmount,
-      paymentDate: receipt.createdDate,
-      month: receipt.month,
-      year: receipt.year,
-      paymentMethod: receipt.paymentMethod,
-      status: receipt.status === 'pagado' ? 'confirmado' as const : 'pendiente_confirmacion' as const,
-      receipt
-    }));
+    return (receipts ?? []).map((receipt) => {
+      const paidAmount = num((receipt as any).paidAmount);
+      const status = (receipt as any).status;
+
+      return {
+        id: receipt.id,
+        receiptNumber: receipt.receiptNumber ?? '',
+        tenant: receipt.tenant ?? '',
+        property: receipt.property ?? '',
+        building: receipt.building ?? '',
+        amount: paidAmount, // <- SIEMPRE NÚMERO
+        paymentDate: receipt.createdDate ?? '',
+        month: receipt.month ?? '',
+        year: receipt.year ?? new Date().getFullYear(),
+        paymentMethod: (receipt as any).paymentMethod ?? 'efectivo',
+        status: status === 'pagado' ? ('confirmado' as const) : ('pendiente_confirmacion' as const),
+        receipt: {
+          ...receipt,
+          rent: num((receipt as any).rent),
+          expenses: num((receipt as any).expenses),
+          previousBalance: num((receipt as any).previousBalance),
+          total: num((receipt as any).total),
+          paidAmount: paidAmount,
+          remainingBalance: num((receipt as any).remainingBalance),
+          otherCharges: Array.isArray((receipt as any).otherCharges) ? (receipt as any).otherCharges : [],
+        } as Receipt,
+      };
+    });
   }, [receipts]);
 
   const months = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     years.add(new Date().getFullYear());
-    payments.forEach(p => years.add(p.year));
+    payments.forEach((p) => years.add(p.year));
     return Array.from(years).sort((a, b) => b - a);
   }, [payments]);
 
   // Get unique values for filters
-  const uniqueTenants = useMemo(() => [...new Set(payments.map(p => p.tenant))].sort(), [payments]);
-  const uniqueProperties = useMemo(() => [...new Set(payments.map(p => p.property))].sort(), [payments]);
-  const uniqueBuildings = useMemo(() => [...new Set(payments.map(p => p.building))].sort(), [payments]);
+  const uniqueTenants = useMemo(() => [...new Set(payments.map((p) => p.tenant))].filter(Boolean).sort(), [payments]);
+  const uniqueProperties = useMemo(() => [...new Set(payments.map((p) => p.property))].filter(Boolean).sort(), [payments]);
+  const uniqueBuildings = useMemo(() => [...new Set(payments.map((p) => p.building))].filter(Boolean).sort(), [payments]);
 
-  const filteredPayments = payments.filter(payment => {
+  const filteredPayments = payments.filter((payment) => {
     const yearMatch = payment.year === selectedYear;
     const monthMatch = !selectedMonth || payment.month === selectedMonth;
     const statusMatch = !selectedStatus || payment.status === selectedStatus;
     const tenantMatch = !selectedTenant || payment.tenant === selectedTenant;
     const propertyMatch = selectedProperties.length === 0 || selectedProperties.includes(payment.property);
     const buildingMatch = !selectedBuilding || payment.building === selectedBuilding;
-    const searchMatch = !searchTerm ||
-      payment.tenant.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.property.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.building.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const s = searchTerm.toLowerCase();
+    const searchMatch =
+      !searchTerm ||
+      (payment.tenant ?? '').toLowerCase().includes(s) ||
+      (payment.property ?? '').toLowerCase().includes(s) ||
+      (payment.building ?? '').toLowerCase().includes(s) ||
+      (payment.receiptNumber ?? '').toLowerCase().includes(s);
 
     return yearMatch && monthMatch && statusMatch && tenantMatch && propertyMatch && buildingMatch && searchMatch;
   });
 
-  const totalAmount = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const totalAmount = filteredPayments.reduce((sum, payment) => sum + num(payment.amount), 0);
 
   const clearFilters = () => {
     setSelectedMonth('');
@@ -84,16 +119,19 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
     const labels = {
       efectivo: 'Efectivo',
       transferencia: 'Transferencia',
-      dolares: 'Dólares'
+      dolares: 'Dólares',
     };
-    return labels[method as keyof typeof labels] || method;
+    return (labels as any)[method] || method;
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmado': return 'bg-green-100 text-green-800';
-      case 'pendiente_confirmacion': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'confirmado':
+        return 'bg-green-100 text-green-800';
+      case 'pendiente_confirmacion':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -108,11 +146,34 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const safeReceipt: Receipt = {
+      ...receipt,
+      rent: num((receipt as any).rent),
+      expenses: num((receipt as any).expenses),
+      previousBalance: num((receipt as any).previousBalance),
+      total: num((receipt as any).total),
+      paidAmount: num((receipt as any).paidAmount),
+      remainingBalance: num((receipt as any).remainingBalance),
+      otherCharges: Array.isArray((receipt as any).otherCharges) ? (receipt as any).otherCharges : [],
+      tenant: receipt.tenant ?? '',
+      property: receipt.property ?? '',
+      building: receipt.building ?? '',
+      month: receipt.month ?? '',
+      createdDate: receipt.createdDate ?? '',
+      dueDate: receipt.dueDate ?? '',
+      currency: (receipt.currency as any) ?? 'ARS',
+      receiptNumber: receipt.receiptNumber ?? '',
+      year: receipt.year ?? new Date().getFullYear(),
+      paymentMethod: (receipt.paymentMethod as any) ?? 'efectivo',
+      status: (receipt.status as any) ?? 'pendiente',
+      id: receipt.id ?? Date.now(),
+    };
+
     const receiptHtml = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Recibo ${receipt.receiptNumber}</title>
+          <title>Recibo ${safeReceipt.receiptNumber}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
@@ -129,21 +190,21 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
         <body>
           <div class="header">
             <h1>RECIBO DE ALQUILER</h1>
-            <h2>${receipt.receiptNumber}</h2>
+            <h2>${safeReceipt.receiptNumber}</h2>
           </div>
 
           <div class="receipt-info">
             <div class="info-row">
-              <span><strong>Inquilino:</strong> ${receipt.tenant}</span>
-              <span><strong>Fecha de emisión:</strong> ${receipt.createdDate}</span>
+              <span><strong>Inquilino:</strong> ${safeReceipt.tenant}</span>
+              <span><strong>Fecha de emisión:</strong> ${safeReceipt.createdDate}</span>
             </div>
             <div class="info-row">
-              <span><strong>Propiedad:</strong> ${receipt.property}</span>
-              <span><strong>Fecha de vencimiento:</strong> ${receipt.dueDate}</span>
+              <span><strong>Propiedad:</strong> ${safeReceipt.property}</span>
+              <span><strong>Fecha de vencimiento:</strong> ${safeReceipt.dueDate}</span>
             </div>
             <div class="info-row">
-              <span class="building"><strong>Edificio:</strong> ${receipt.building}</span>
-              <span><strong>Período:</strong> ${receipt.month} ${receipt.year}</span>
+              <span class="building"><strong>Edificio:</strong> ${safeReceipt.building}</span>
+              <span><strong>Período:</strong> ${safeReceipt.month} ${safeReceipt.year}</span>
             </div>
           </div>
 
@@ -157,45 +218,45 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             <tbody>
               <tr>
                 <td>Alquiler</td>
-                <td style="text-align: right;">$${receipt.rent.toLocaleString()}</td>
+                <td style="text-align: right;">$${safeReceipt.rent.toLocaleString()}</td>
               </tr>
               <tr>
                 <td>Expensas</td>
-                <td style="text-align: right;">$${receipt.expenses.toLocaleString()}</td>
+                <td style="text-align: right;">$${safeReceipt.expenses.toLocaleString()}</td>
               </tr>
-              ${receipt.previousBalance > 0 ? `
+              ${safeReceipt.previousBalance > 0 ? `
                 <tr>
                   <td>Saldo anterior</td>
-                  <td style="text-align: right;">$${receipt.previousBalance.toLocaleString()}</td>
+                  <td style="text-align: right;">$${safeReceipt.previousBalance.toLocaleString()}</td>
                 </tr>
               ` : ''}
-              ${receipt.otherCharges.map(charge => `
+              ${(safeReceipt.otherCharges ?? []).map((charge: any) => `
                 <tr>
-                  <td>${charge.description}</td>
-                  <td style="text-align: right;">$${charge.amount.toLocaleString()}</td>
+                  <td>${charge.description ?? ''}</td>
+                  <td style="text-align: right;">$${num(charge.amount).toLocaleString()}</td>
                 </tr>
               `).join('')}
               <tr class="total-row">
                 <td><strong>TOTAL A PAGAR</strong></td>
-                <td style="text-align: right;"><strong>${receipt.currency} $${receipt.total.toLocaleString()}</strong></td>
+                <td style="text-align: right;"><strong>${safeReceipt.currency} $${safeReceipt.total.toLocaleString()}</strong></td>
               </tr>
-              ${receipt.paidAmount > 0 ? `
+              ${safeReceipt.paidAmount > 0 ? `
                 <tr>
                   <td><strong>PAGADO</strong></td>
-                  <td style="text-align: right;"><strong>$${receipt.paidAmount.toLocaleString()}</strong></td>
+                  <td style="text-align: right;"><strong>$${safeReceipt.paidAmount.toLocaleString()}</strong></td>
                 </tr>
               ` : ''}
-              ${receipt.remainingBalance > 0 ? `
+              ${safeReceipt.remainingBalance > 0 ? `
                 <tr style="background-color: #fee2e2;">
                   <td><strong>SALDO PENDIENTE</strong></td>
-                  <td style="text-align: right;"><strong>$${receipt.remainingBalance.toLocaleString()}</strong></td>
+                  <td style="text-align: right;"><strong>$${safeReceipt.remainingBalance.toLocaleString()}</strong></td>
                 </tr>
               ` : ''}
             </tbody>
           </table>
 
           <div class="footer">
-            <p>Este recibo debe ser abonado antes del ${receipt.dueDate}</p>
+            <p>Este recibo debe ser abonado antes del ${safeReceipt.dueDate}</p>
             <p>Gracias por su puntualidad en el pago</p>
           </div>
         </body>
@@ -211,16 +272,18 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
     const headers = ['Fecha', 'Recibo', 'Inquilino', 'Propiedad', 'Edificio', 'Monto', 'Método', 'Estado'];
     const csvContent = [
       headers.join(','),
-      ...filteredPayments.map(payment => [
-        payment.paymentDate,
-        payment.receiptNumber,
-        payment.tenant,
-        payment.property,
-        payment.building,
-        payment.amount,
-        getPaymentMethodLabel(payment.paymentMethod),
-        payment.status
-      ].join(','))
+      ...filteredPayments.map((payment) =>
+        [
+          payment.paymentDate,
+          payment.receiptNumber,
+          payment.tenant,
+          payment.property,
+          payment.building,
+          num(payment.amount),
+          getPaymentMethodLabel(payment.paymentMethod),
+          payment.status,
+        ].join(',')
+      ),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -231,14 +294,11 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
   };
 
   const toggleProperty = (prop: string) => {
-    setSelectedProperties(prev => prev.includes(prop) ? prev.filter(p => p !== prop) : [...prev, prop]);
+    setSelectedProperties((prev) => (prev.includes(prop) ? prev.filter((p) => p !== prop) : [...prev, prop]));
   };
 
-  const propertyLabel = selectedProperties.length === 0
-    ? 'Todas'
-    : selectedProperties.length === 1
-      ? selectedProperties[0]
-      : `${selectedProperties.length} seleccionadas`;
+  const propertyLabel =
+    selectedProperties.length === 0 ? 'Todas' : selectedProperties.length === 1 ? selectedProperties[0] : `${selectedProperties.length} seleccionadas`;
 
   return (
     <div className="space-y-6">
@@ -293,7 +353,9 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {availableYears.map((y) => (
-                <option key={y} value={y}>{y}</option>
+                <option key={y} value={y}>
+                  {y}
+                </option>
               ))}
             </select>
           </div>
@@ -307,7 +369,9 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             >
               <option value="">Todos los meses</option>
               {months.map((month) => (
-                <option key={month} value={month}>{month}</option>
+                <option key={month} value={month}>
+                  {month}
+                </option>
               ))}
             </select>
           </div>
@@ -321,7 +385,9 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             >
               <option value="">Todos los inquilinos</option>
               {uniqueTenants.map((tenant) => (
-                <option key={tenant} value={tenant}>{tenant}</option>
+                <option key={tenant} value={tenant}>
+                  {tenant}
+                </option>
               ))}
             </select>
           </div>
@@ -330,7 +396,7 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Propiedades</label>
             <button
               type="button"
-              onClick={() => setShowPropertyPicker(v => !v)}
+              onClick={() => setShowPropertyPicker((v) => !v)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-left bg-white hover:bg-gray-50"
             >
               {propertyLabel}
@@ -339,22 +405,14 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             {showPropertyPicker && (
               <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
                 <div className="p-2 border-b border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProperties([])}
-                    className="text-xs text-blue-600 hover:text-blue-700"
-                  >
+                  <button type="button" onClick={() => setSelectedProperties([])} className="text-xs text-blue-600 hover:text-blue-700">
                     Limpiar selección
                   </button>
                 </div>
                 <div className="p-2">
                   {uniqueProperties.map((prop) => (
                     <label key={prop} className="flex items-center space-x-2 py-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedProperties.includes(prop)}
-                        onChange={() => toggleProperty(prop)}
-                      />
+                      <input type="checkbox" checked={selectedProperties.includes(prop)} onChange={() => toggleProperty(prop)} />
                       <span className="text-sm text-gray-700">{prop}</span>
                     </label>
                   ))}
@@ -372,7 +430,9 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             >
               <option value="">Todos los edificios</option>
               {uniqueBuildings.map((building) => (
-                <option key={building} value={building}>{building}</option>
+                <option key={building} value={building}>
+                  {building}
+                </option>
               ))}
             </select>
           </div>
@@ -393,7 +453,7 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            Mostrando <strong>{filteredPayments.length}</strong> pagos · Total: <strong>${totalAmount.toLocaleString()}</strong>
+            Mostrando <strong>{filteredPayments.length}</strong> pagos · Total: <strong>${money(totalAmount)}</strong>
           </div>
         </div>
       </div>
@@ -415,6 +475,7 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
+
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPayments.map((payment) => (
                 <tr key={payment.id} className="hover:bg-gray-50">
@@ -423,7 +484,7 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.tenant}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.property}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.building}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">${payment.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">${money(payment.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getPaymentMethodLabel(payment.paymentMethod)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(payment.status)}`}>
@@ -432,11 +493,19 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      <button onClick={() => viewReceipt(payment)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Ver recibo">
+                      <button
+                        onClick={() => viewReceipt(payment)}
+                        className="text-gray-400 hover:text-blue-600 transition-colors"
+                        title="Ver recibo"
+                      >
                         <Eye className="h-4 w-4" />
                       </button>
                       {payment.receipt && (
-                        <button onClick={() => printReceipt(payment.receipt)} className="text-gray-400 hover:text-green-600 transition-colors" title="Imprimir">
+                        <button
+                          onClick={() => printReceipt(payment.receipt)}
+                          className="text-gray-400 hover:text-green-600 transition-colors"
+                          title="Imprimir"
+                        >
                           <Printer className="h-4 w-4" />
                         </button>
                       )}
@@ -444,6 +513,7 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
                   </td>
                 </tr>
               ))}
+
               {filteredPayments.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-6 py-10 text-center text-gray-500">
@@ -470,14 +540,26 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
             <div className="border border-gray-200 rounded-lg p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p><strong>Inquilino:</strong> {selectedReceipt.tenant}</p>
-                  <p><strong>Propiedad:</strong> {selectedReceipt.property}</p>
-                  <p><strong>Edificio:</strong> {selectedReceipt.building}</p>
+                  <p>
+                    <strong>Inquilino:</strong> {selectedReceipt.tenant}
+                  </p>
+                  <p>
+                    <strong>Propiedad:</strong> {selectedReceipt.property}
+                  </p>
+                  <p>
+                    <strong>Edificio:</strong> {selectedReceipt.building}
+                  </p>
                 </div>
                 <div>
-                  <p><strong>Período:</strong> {selectedReceipt.month} {selectedReceipt.year}</p>
-                  <p><strong>Emisión:</strong> {selectedReceipt.createdDate}</p>
-                  <p><strong>Vencimiento:</strong> {selectedReceipt.dueDate}</p>
+                  <p>
+                    <strong>Período:</strong> {selectedReceipt.month} {selectedReceipt.year}
+                  </p>
+                  <p>
+                    <strong>Emisión:</strong> {selectedReceipt.createdDate}
+                  </p>
+                  <p>
+                    <strong>Vencimiento:</strong> {selectedReceipt.dueDate}
+                  </p>
                 </div>
               </div>
 
@@ -486,36 +568,42 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
                   <tbody>
                     <tr className="border-b">
                       <td className="py-2">Alquiler</td>
-                      <td className="py-2 text-right">${selectedReceipt.rent.toLocaleString()}</td>
+                      <td className="py-2 text-right">${money((selectedReceipt as any).rent)}</td>
                     </tr>
                     <tr className="border-b">
                       <td className="py-2">Expensas</td>
-                      <td className="py-2 text-right">${selectedReceipt.expenses.toLocaleString()}</td>
+                      <td className="py-2 text-right">${money((selectedReceipt as any).expenses)}</td>
                     </tr>
-                    {selectedReceipt.previousBalance > 0 && (
+                    {num((selectedReceipt as any).previousBalance) > 0 && (
                       <tr className="border-b">
                         <td className="py-2">Saldo anterior</td>
-                        <td className="py-2 text-right">${selectedReceipt.previousBalance.toLocaleString()}</td>
+                        <td className="py-2 text-right">${money((selectedReceipt as any).previousBalance)}</td>
                       </tr>
                     )}
-                    {selectedReceipt.otherCharges.map((c, idx) => (
+                    {(selectedReceipt.otherCharges ?? []).map((c: any, idx: number) => (
                       <tr key={idx} className="border-b">
-                        <td className="py-2">{c.description}</td>
-                        <td className="py-2 text-right">${c.amount.toLocaleString()}</td>
+                        <td className="py-2">{c.description ?? ''}</td>
+                        <td className="py-2 text-right">${money(c.amount)}</td>
                       </tr>
                     ))}
                     <tr className="font-semibold">
                       <td className="py-2">TOTAL</td>
-                      <td className="py-2 text-right">{selectedReceipt.currency} ${selectedReceipt.total.toLocaleString()}</td>
+                      <td className="py-2 text-right">
+                        {(selectedReceipt.currency ?? 'ARS') as any} ${money((selectedReceipt as any).total)}
+                      </td>
                     </tr>
                     <tr>
                       <td className="py-2">PAGADO</td>
-                      <td className="py-2 text-right">${selectedReceipt.paidAmount.toLocaleString()}</td>
+                      <td className="py-2 text-right">${money((selectedReceipt as any).paidAmount)}</td>
                     </tr>
                     <tr>
                       <td className="py-2">SALDO</td>
-                      <td className={`py-2 text-right font-semibold ${selectedReceipt.remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        ${selectedReceipt.remainingBalance.toLocaleString()}
+                      <td
+                        className={`py-2 text-right font-semibold ${
+                          num((selectedReceipt as any).remainingBalance) > 0 ? 'text-red-600' : 'text-green-600'
+                        }`}
+                      >
+                        ${money((selectedReceipt as any).remainingBalance)}
                       </td>
                     </tr>
                   </tbody>
