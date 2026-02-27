@@ -6,18 +6,30 @@ interface PaymentsHistoryProps {
   receipts: Receipt[];
 }
 
-const safeNumber = (value: any) => Number(value ?? 0);
+const safeNumber = (value: any) => {
+  const n = Number(value);
+  return isNaN(n) ? 0 : n;
+};
+
+const safeString = (value: any) => value ?? '';
 
 const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
 
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
 
+  // 🔒 Normalizamos datos por si Firebase trae campos faltantes
   const payments = useMemo(() => {
-    return receipts.map(receipt => ({
-      ...receipt,
-      amount: safeNumber(receipt.paidAmount),
-      total: safeNumber(receipt.total),
-      remaining: safeNumber(receipt.remainingBalance)
+    return (receipts || []).map((receipt, index) => ({
+      id: receipt?.id ?? `temp-${index}`,
+      createdDate: safeString(receipt?.createdDate),
+      receiptNumber: safeString(receipt?.receiptNumber),
+      tenant: safeString(receipt?.tenant),
+      property: safeString(receipt?.property),
+      year: receipt?.year ?? currentYear,
+      amount: safeNumber(receipt?.paidAmount),
+      total: safeNumber(receipt?.total),
+      remaining: safeNumber(receipt?.remainingBalance)
     }));
   }, [receipts]);
 
@@ -30,16 +42,18 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
 
   const exportToCSV = () => {
     const headers = ['Fecha', 'Recibo', 'Inquilino', 'Propiedad', 'Monto'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredPayments.map(p => [
-        p.createdDate,
-        p.receiptNumber,
-        p.tenant,
-        p.property,
-        safeNumber(p.amount)
-      ].join(','))
-    ].join('\n');
+
+    const rows = filteredPayments.map(p => [
+      safeString(p.createdDate),
+      safeString(p.receiptNumber),
+      safeString(p.tenant),
+      safeString(p.property),
+      safeNumber(p.amount)
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.join(','))
+      .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -63,7 +77,8 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
       </div>
 
       <div className="text-sm text-gray-600">
-        Total del año {selectedYear}: <strong>${totalAmount.toLocaleString()}</strong>
+        Total del año {selectedYear}:{' '}
+        <strong>${safeNumber(totalAmount).toLocaleString()}</strong>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -76,17 +91,25 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monto</th>
             </tr>
           </thead>
+
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredPayments.map(payment => (
               <tr key={payment.id}>
-                <td className="px-6 py-4 text-sm">{payment.createdDate}</td>
-                <td className="px-6 py-4 text-sm">{payment.receiptNumber}</td>
-                <td className="px-6 py-4 text-sm">{payment.tenant}</td>
+                <td className="px-6 py-4 text-sm">
+                  {payment.createdDate || '-'}
+                </td>
+                <td className="px-6 py-4 text-sm">
+                  {payment.receiptNumber || '-'}
+                </td>
+                <td className="px-6 py-4 text-sm">
+                  {payment.tenant || '-'}
+                </td>
                 <td className="px-6 py-4 text-sm font-semibold">
                   ${safeNumber(payment.amount).toLocaleString()}
                 </td>
               </tr>
             ))}
+
             {filteredPayments.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
