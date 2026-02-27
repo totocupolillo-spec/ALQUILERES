@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Plus, User, Phone, Mail, Calendar, Edit, Trash2, Eye } from 'lucide-react';
 import { Tenant, Property } from '../App';
 
@@ -23,51 +23,78 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
     deposit: '',
     guarantorName: '',
     guarantorEmail: '',
-    guarantorPhone: ''
+    guarantorPhone: '',
   });
+
+  // Helpers seguros
+  const safeText = (v: unknown, fallback = ''): string =>
+    typeof v === 'string' ? v : v == null ? fallback : String(v);
+
+  const safeNumber = (v: unknown, fallback = 0): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const safeStatus = (v: unknown): Tenant['status'] => {
+    const s = safeText(v, 'activo');
+    if (s === 'activo' || s === 'vencido' || s === 'pendiente') return s;
+    return 'activo';
+  };
+
+  const prettyStatus = (statusLike: unknown) => {
+    const s = safeText(statusLike, '');
+    if (!s) return 'Sin estado';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const selectedProperty = properties.find(p => p.id.toString() === formData.propertyId);
-    const oldPropertyId = editingTenant?.propertyId;
-    
+
+    const selectedProperty = properties.find((p) => String(p.id) === formData.propertyId);
+    const oldPropertyId = editingTenant?.propertyId ?? null;
+
     const newTenant: Tenant = {
       id: editingTenant ? editingTenant.id : Date.now(),
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      propertyId: formData.propertyId ? parseInt(formData.propertyId) : null,
-      property: selectedProperty?.name || '',
-      contractStart: formData.contractStart,
-      contractEnd: formData.contractEnd,
-      deposit: parseFloat(formData.deposit),
+      name: safeText(formData.name),
+      email: safeText(formData.email),
+      phone: safeText(formData.phone),
+      propertyId: formData.propertyId ? parseInt(formData.propertyId, 10) : null,
+      property: selectedProperty?.name ?? '',
+      contractStart: safeText(formData.contractStart),
+      contractEnd: safeText(formData.contractEnd),
+      deposit: safeNumber(formData.deposit, 0),
       guarantor: {
-        name: formData.guarantorName,
-        email: formData.guarantorEmail,
-        phone: formData.guarantorPhone
+        name: safeText(formData.guarantorName),
+        email: safeText(formData.guarantorEmail),
+        phone: safeText(formData.guarantorPhone),
       },
-      balance: editingTenant?.balance || 0,
-      status: 'activo'
+      balance: editingTenant?.balance ?? 0,
+      status: editingTenant?.status ?? 'activo',
     };
 
     if (editingTenant) {
-      setTenants(tenants.map(t => t.id === editingTenant.id ? newTenant : t));
-      // Actualizar propiedades si cambió la asignación
+      setTenants(tenants.map((t) => (t.id === editingTenant.id ? newTenant : t)));
       if (oldPropertyId !== newTenant.propertyId) {
         updatePropertyTenant(newTenant.propertyId, newTenant.name, oldPropertyId);
       }
     } else {
       setTenants([...tenants, newTenant]);
-      // Asignar propiedad al nuevo inquilino
       if (newTenant.propertyId) {
         updatePropertyTenant(newTenant.propertyId, newTenant.name);
       }
     }
 
-    setFormData({ 
-      name: '', email: '', phone: '', propertyId: '', contractStart: '', contractEnd: '', deposit: '',
-      guarantorName: '', guarantorEmail: '', guarantorPhone: ''
+    setFormData({
+      name: '',
+      email: '',
+      phone: '',
+      propertyId: '',
+      contractStart: '',
+      contractEnd: '',
+      deposit: '',
+      guarantorName: '',
+      guarantorEmail: '',
+      guarantorPhone: '',
     });
     setShowModal(false);
     setEditingTenant(null);
@@ -76,47 +103,70 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
   const handleEdit = (tenant: Tenant) => {
     setEditingTenant(tenant);
     setFormData({
-      name: tenant.name,
-      email: tenant.email,
-      phone: tenant.phone,
-      propertyId: tenant.propertyId?.toString() || '',
-      contractStart: tenant.contractStart,
-      contractEnd: tenant.contractEnd,
-      deposit: tenant.deposit.toString(),
-      guarantorName: tenant.guarantor.name,
-      guarantorEmail: tenant.guarantor.email,
-      guarantorPhone: tenant.guarantor.phone
+      name: safeText(tenant?.name),
+      email: safeText(tenant?.email),
+      phone: safeText(tenant?.phone),
+      propertyId: tenant?.propertyId != null ? String(tenant.propertyId) : '',
+      contractStart: safeText(tenant?.contractStart),
+      contractEnd: safeText(tenant?.contractEnd),
+      deposit: String(safeNumber(tenant?.deposit, 0)),
+      guarantorName: safeText(tenant?.guarantor?.name),
+      guarantorEmail: safeText(tenant?.guarantor?.email),
+      guarantorPhone: safeText(tenant?.guarantor?.phone),
     });
     setShowModal(true);
   };
 
   const handleDelete = (id: number) => {
     if (confirm('¿Está seguro de eliminar este inquilino?')) {
-      const tenant = tenants.find(t => t.id === id);
+      const tenant = tenants.find((t) => t.id === id);
       if (tenant?.propertyId) {
-        // Liberar la propiedad
         updatePropertyTenant(null, null, tenant.propertyId);
       }
-      setTenants(tenants.filter(t => t.id !== id));
+      setTenants(tenants.filter((t) => t.id !== id));
     }
   };
 
   const getStatusColor = (status: Tenant['status']) => {
     switch (status) {
-      case 'activo': return 'bg-green-100 text-green-800';
-      case 'vencido': return 'bg-red-100 text-red-800';
-      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'activo':
+        return 'bg-green-100 text-green-800';
+      case 'vencido':
+        return 'bg-red-100 text-red-800';
+      case 'pendiente':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
-  // Obtener propiedades disponibles (no ocupadas) más la propiedad actual del inquilino
   const getAvailableProperties = () => {
-    return properties.filter(property => 
-      property.status === 'disponible' || 
-      (editingTenant && property.id === editingTenant.propertyId)
+    return properties.filter(
+      (property) => property.status === 'disponible' || (editingTenant && property.id === editingTenant.propertyId)
     );
   };
+
+  const safeTenants = useMemo(() => {
+    // Evita crashes si algún tenant viene mal armado desde DB
+    return tenants.map((t) => ({
+      ...t,
+      name: safeText(t?.name),
+      email: safeText(t?.email),
+      phone: safeText(t?.phone),
+      property: safeText(t?.property),
+      contractStart: safeText(t?.contractStart),
+      contractEnd: safeText(t?.contractEnd),
+      deposit: safeNumber(t?.deposit, 0),
+      balance: safeNumber(t?.balance, 0),
+      status: safeStatus(t?.status),
+      guarantor: {
+        name: safeText(t?.guarantor?.name),
+        email: safeText(t?.guarantor?.email),
+        phone: safeText(t?.guarantor?.phone),
+      },
+    }));
+  }, [tenants]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -127,7 +177,18 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
         </div>
         <button
           onClick={() => {
-            setFormData({ name: '', email: '', phone: '', propertyId: '', contractStart: '', contractEnd: '', deposit: '', guarantorName: '', guarantorEmail: '', guarantorPhone: '' });
+            setFormData({
+              name: '',
+              email: '',
+              phone: '',
+              propertyId: '',
+              contractStart: '',
+              contractEnd: '',
+              deposit: '',
+              guarantorName: '',
+              guarantorEmail: '',
+              guarantorPhone: '',
+            });
             setEditingTenant(null);
             setShowModal(true);
           }}
@@ -144,31 +205,18 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Inquilino
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contacto
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Propiedad
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contrato
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Saldo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Estado
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Acciones
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquilino</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacto</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Propiedad</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contrato</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saldo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
+
             <tbody className="bg-white divide-y divide-gray-200">
-              {tenants.map((tenant) => (
+              {safeTenants.map((tenant) => (
                 <tr key={tenant.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -178,76 +226,80 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
                         </div>
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{tenant.name}</div>
-                        <div className="text-sm text-gray-500">
-                          Depósito: ${tenant.deposit.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Garante: {tenant.guarantor.name}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{tenant.name || 'Sin nombre'}</div>
+                        <div className="text-sm text-gray-500">Depósito: ${tenant.deposit.toLocaleString()}</div>
+                        <div className="text-sm text-gray-500">Garante: {tenant.guarantor.name || '-'}</div>
                       </div>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="space-y-1">
                       <div className="flex items-center text-sm text-gray-900">
                         <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                        {tenant.email}
+                        {tenant.email || '-'}
                       </div>
                       <div className="flex items-center text-sm text-gray-500">
                         <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                        {tenant.phone}
+                        {tenant.phone || '-'}
                       </div>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{tenant.property}</div>
+                    <div className="text-sm font-medium text-gray-900">{tenant.property || '-'}</div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="space-y-1">
                       <div className="flex items-center text-sm text-gray-900">
                         <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                        Inicio: {tenant.contractStart}
+                        Inicio: {tenant.contractStart || '-'}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        Vence: {tenant.contractEnd}
-                      </div>
+                      <div className="text-sm text-gray-500">Vence: {tenant.contractEnd || '-'}</div>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className={`text-sm font-semibold ${tenant.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                       ${tenant.balance.toLocaleString()}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {tenant.balance > 0 ? 'Debe' : 'Al día'}
-                    </div>
+                    <div className="text-xs text-gray-500">{tenant.balance > 0 ? 'Debe' : 'Al día'}</div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(tenant.status)}`}>
-                      {tenant.status.charAt(0).toUpperCase() + tenant.status.slice(1)}
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                        tenant.status
+                      )}`}
+                    >
+                      {prettyStatus(tenant.status)}
                     </span>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
                       <button className="text-gray-400 hover:text-blue-600 transition-colors">
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => handleEdit(tenant)}
-                        className="text-gray-400 hover:text-blue-600 transition-colors"
-                      >
+                      <button onClick={() => handleEdit(tenant)} className="text-gray-400 hover:text-blue-600 transition-colors">
                         <Edit className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => handleDelete(tenant.id)}
-                        className="text-gray-400 hover:text-red-600 transition-colors"
-                      >
+                      <button onClick={() => handleDelete(tenant.id)} className="text-gray-400 hover:text-red-600 transition-colors">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </td>
                 </tr>
               ))}
+
+              {safeTenants.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                    No hay inquilinos cargados.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -305,8 +357,8 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
                   >
                     <option value="">Sin propiedad asignada</option>
                     {getAvailableProperties().map((property) => (
-                      <option key={property.id} value={property.id.toString()}>
-                        {property.name} - {property.building} (${property.rent.toLocaleString()})
+                      <option key={property.id} value={String(property.id)}>
+                        {property.name} - {property.building} (${(Number(property.rent) || 0).toLocaleString()})
                       </option>
                     ))}
                   </select>
@@ -395,10 +447,7 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                   {editingTenant ? 'Actualizar' : 'Agregar'}
                 </button>
               </div>
