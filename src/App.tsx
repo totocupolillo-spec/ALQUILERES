@@ -1,3 +1,4 @@
+import { useFirebaseDB } from './hooks/useFirebaseDB';
 import React, { useState, useEffect } from 'react';
 import { Building2, Users, Receipt, Calendar, BarChart3, Plus, Search, Bell, Wallet } from 'lucide-react';
 import { useSupabase } from './hooks/useSupabase';
