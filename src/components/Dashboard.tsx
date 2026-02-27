@@ -6,6 +6,7 @@ interface DashboardProps {
   properties: Property[];
   tenants: Tenant[];
   receipts: Receipt[];
+  setActiveTab?: (tab: any) => void; // ✅ opcional para evitar romper App
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) => {
@@ -53,6 +54,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
     const totalDebt = debtors.reduce((sum, d) => sum + d.debt, 0);
 
     const recentReceipts = receipts
+      .slice()
       .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
       .slice(0, 5);
 
@@ -201,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
         </div>
       </div>
 
-      {/* Upcoming Dues (kept as-is, placeholder) */}
+      {/* Upcoming Dues */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center space-x-2 mb-4">
           <Calendar className="h-5 w-5 text-orange-600" />
