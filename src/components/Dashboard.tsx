@@ -3,37 +3,42 @@ import { Building2, Users, FileText, AlertTriangle, TrendingUp, Calendar, Dollar
 import { Property, Tenant, Receipt } from '../App';
 
 interface DashboardProps {
-  properties: Property[];
-  tenants: Tenant[];
-  receipts: Receipt[];
-  setActiveTab?: (tab: any) => void; // ✅ opcional para evitar romper App
+  properties?: Property[];
+  tenants?: Tenant[];
+  receipts?: Receipt[];
+  // Lo estás pasando desde App. Lo dejo opcional para no romper nada.
+  setActiveTab?: (tab: any) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) => {
+  const safeProperties = properties ?? [];
+  const safeTenants = tenants ?? [];
+  const safeReceipts = receipts ?? [];
+
   const stats = useMemo(() => {
-    const totalProperties = properties.length;
-    const occupiedProperties = properties.filter(p => p.status === 'ocupado').length;
-    const availableProperties = properties.filter(p => p.status === 'disponible').length;
-    const totalTenants = tenants.length;
+    const totalProperties = safeProperties.length;
+    const occupiedProperties = safeProperties.filter(p => p.status === 'ocupado').length;
+    const availableProperties = safeProperties.filter(p => p.status === 'disponible').length;
+    const totalTenants = safeTenants.length;
 
     const currentMonth = new Date().toLocaleString('es-ES', { month: 'long' });
     const currentYear = new Date().getFullYear();
 
-    const monthReceipts = receipts.filter(r =>
-      r.month.toLowerCase() === currentMonth.toLowerCase() && r.year === currentYear
+    const monthReceipts = safeReceipts.filter(r =>
+      (r.month || '').toLowerCase() === currentMonth.toLowerCase() && r.year === currentYear
     );
 
     const totalIncome = monthReceipts.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
 
-    // Deudores: priorizamos tenant.balance, pero si viene en 0 y hay recibos con saldo, tomamos el mas reciente.
+    // Deudores: priorizamos tenant.balance, pero si viene en 0 y hay recibos con saldo, tomamos el más reciente.
     const latestDebtByTenant = new Map<string, number>();
     const latestDateByTenant = new Map<string, number>();
 
-    receipts.forEach(r => {
+    safeReceipts.forEach(r => {
       if (!r.tenant) return;
       const hasDebt = (r.remainingBalance || 0) > 0;
       if (!hasDebt) return;
-      const dateNum = new Date(r.createdDate).getTime();
+      const dateNum = new Date(r.createdDate || Date.now()).getTime();
       const prev = latestDateByTenant.get(r.tenant);
       if (!prev || dateNum >= prev) {
         latestDateByTenant.set(r.tenant, dateNum);
@@ -41,7 +46,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
       }
     });
 
-    const debtors = tenants
+    const debtors = safeTenants
       .map(t => {
         const fallback = latestDebtByTenant.get(t.name) ?? 0;
         const debt = Math.max(t.balance || 0, fallback);
@@ -53,9 +58,8 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
     const pendingPayments = debtors.length;
     const totalDebt = debtors.reduce((sum, d) => sum + d.debt, 0);
 
-    const recentReceipts = receipts
-      .slice()
-      .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
+    const recentReceipts = [...safeReceipts]
+      .sort((a, b) => new Date(b.createdDate || 0).getTime() - new Date(a.createdDate || 0).getTime())
       .slice(0, 5);
 
     return {
@@ -69,7 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
       recentReceipts,
       debtors
     };
-  }, [properties, tenants, receipts]);
+  }, [safeProperties, safeTenants, safeReceipts]);
 
   return (
     <div className="space-y-6">
@@ -132,7 +136,9 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-500">
-            <span>Deuda total: <strong className="text-red-600">${stats.totalDebt.toLocaleString()}</strong></span>
+            <span>
+              Deuda total: <strong className="text-red-600">${stats.totalDebt.toLocaleString()}</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -154,11 +160,14 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
                   <p className="text-sm text-gray-600">{receipt.property} - {receipt.month} {receipt.year}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-900">${receipt.total.toLocaleString()}</p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${receipt.status === 'pagado'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                    }`}>
+                  <p className="font-semibold text-gray-900">${(receipt.total || 0).toLocaleString()}</p>
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full ${
+                      receipt.status === 'pagado'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}
+                  >
                     {receipt.status === 'pagado' ? 'Pagado' : 'Pendiente'}
                   </span>
                 </div>
@@ -180,7 +189,10 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
 
           <div className="space-y-3">
             {stats.debtors.slice(0, 8).map(({ tenant, debt }) => (
-              <div key={tenant.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+              <div
+                key={tenant.id}
+                className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100"
+              >
                 <div>
                   <p className="font-medium text-gray-900">{tenant.name}</p>
                   <p className="text-sm text-gray-600">{tenant.property || 'Sin propiedad'}</p>
@@ -203,7 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
         </div>
       </div>
 
-      {/* Upcoming Dues */}
+      {/* Upcoming Dues (placeholder) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center space-x-2 mb-4">
           <Calendar className="h-5 w-5 text-orange-600" />
@@ -225,7 +237,7 @@ const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) 
 
           <div className="p-4 bg-green-50 rounded-lg">
             <p className="text-sm font-medium text-green-800">Al Día</p>
-            <p className="text-2xl font-bold text-green-900">{stats.totalTenants - stats.pendingPayments}</p>
+            <p className="text-2xl font-bold text-green-900">{Math.max(stats.totalTenants - stats.pendingPayments, 0)}</p>
             <p className="text-sm text-green-700">Inquilinos al corriente</p>
           </div>
         </div>
