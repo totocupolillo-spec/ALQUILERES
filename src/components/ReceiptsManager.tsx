@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FileText, Download, Eye, Search, Filter, X, Printer, BarChart3 } from 'lucide-react';
+import { Plus, FileText, Eye, Search, Filter, X, Printer, BarChart3 } from 'lucide-react';
 import { Tenant, Receipt, CashMovement, Property } from '../App';
 import MonthlySummary from './MonthlySummary';
 
@@ -12,18 +12,25 @@ interface ReceiptsManagerProps {
   updateTenantBalance: (tenantName: string, newBalance: number) => void;
 }
 
-const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({ 
-  tenants, 
+const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
+  tenants,
   properties,
-  receipts, 
-  setReceipts, 
-  addCashMovement, 
-  updateTenantBalance 
+  receipts,
+  setReceipts,
+  addCashMovement,
+  updateTenantBalance,
 }) => {
+  // helpers para evitar pantalla blanca por undefined/null
+  const num = (v: any): number => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const n = parseFloat(String(v ?? ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const money = (v: any): string => num(v).toLocaleString();
+
   const [showModal, setShowModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewReceipt, setPreviewReceipt] = useState<Receipt | null>(null);
-
 
   const [formData, setFormData] = useState({
     tenantId: '',
@@ -38,13 +45,13 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
     dueDate: '',
     previousBalance: '',
     currency: 'ARS' as 'ARS' | 'USD',
-    paymentMethod: 'efectivo' as 'efectivo' | 'transferencia' | 'dolares'
+    paymentMethod: 'efectivo' as 'efectivo' | 'transferencia' | 'dolares',
   });
 
   const [paymentData, setPaymentData] = useState({
     paidAmount: '',
     paymentMethod: 'efectivo' as 'efectivo' | 'transferencia' | 'dolares',
-    currency: 'ARS' as 'ARS' | 'USD'
+    currency: 'ARS' as 'ARS' | 'USD',
   });
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -52,32 +59,43 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   const [showMonthlySummary, setShowMonthlySummary] = useState(false);
 
   const months = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   // Auto-fill tenant data when tenant is selected
   useEffect(() => {
     if (formData.tenantId) {
-      const selectedTenant = tenants.find(t => t.id.toString() === formData.tenantId);
-      const selectedProperty = selectedTenant?.propertyId ? 
-        properties.find(p => p.id === selectedTenant.propertyId) : null;
-      
+      const selectedTenant = tenants.find((t) => t.id.toString() === formData.tenantId);
+      const selectedProperty = selectedTenant?.propertyId
+        ? properties.find((p) => p.id === selectedTenant.propertyId)
+        : null;
+
       if (selectedTenant) {
         // Calcular fecha de vencimiento (10 días desde hoy)
         const today = new Date();
         const dueDate = new Date(today);
         dueDate.setDate(today.getDate() + 10);
-        
-        setFormData(prev => ({
+
+        setFormData((prev) => ({
           ...prev,
-          tenant: selectedTenant.name,
-          property: selectedProperty?.name || selectedTenant.property,
+          tenant: selectedTenant.name ?? '',
+          property: selectedProperty?.name || selectedTenant.property || '',
           building: selectedProperty?.building || '',
-          rent: selectedProperty?.rent.toString() || '0',
-          expenses: selectedProperty?.expenses.toString() || '0',
-          previousBalance: selectedTenant.balance.toString(),
-          dueDate: dueDate.toISOString().split('T')[0]
+          rent: (selectedProperty?.rent ?? 0).toString(),
+          expenses: (selectedProperty?.expenses ?? 0).toString(),
+          previousBalance: (selectedTenant.balance ?? 0).toString(),
+          dueDate: dueDate.toISOString().split('T')[0],
         }));
       }
     }
@@ -85,18 +103,20 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const otherCharges = formData.otherCharges
-      .filter(charge => charge.description && charge.amount)
-      .map(charge => ({
+
+    const otherCharges = (formData.otherCharges ?? [])
+      .filter((charge) => charge.description && charge.amount)
+      .map((charge) => ({
         description: charge.description,
-        amount: parseFloat(charge.amount)
+        amount: num(charge.amount),
       }));
 
-    const rent = parseFloat(formData.rent);
-    const expenses = parseFloat(formData.expenses);
-    const previousBalance = parseFloat(formData.previousBalance) || 0;
-    const otherTotal = otherCharges.reduce((sum, charge) => sum + charge.amount, 0);
+    const rent = num(formData.rent);
+    const expenses = num(formData.expenses);
+    const previousBalance = num(formData.previousBalance);
+    const otherTotal = otherCharges.reduce((sum, charge) => sum + num(charge.amount), 0);
+
+    const total = rent + expenses + otherTotal + previousBalance;
 
     const newReceipt: Receipt = {
       id: Date.now(),
@@ -110,14 +130,14 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
       expenses,
       otherCharges,
       previousBalance,
-      total: rent + expenses + otherTotal + previousBalance,
+      total,
       paidAmount: 0,
-      remainingBalance: rent + expenses + otherTotal + previousBalance,
+      remainingBalance: total,
       currency: formData.currency,
       paymentMethod: formData.paymentMethod,
       status: 'pendiente',
       dueDate: formData.dueDate,
-      createdDate: new Date().toISOString().split('T')[0]
+      createdDate: new Date().toISOString().split('T')[0],
     };
 
     // Show preview before saving
@@ -130,9 +150,9 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
       // Show payment modal instead of directly saving
       setProcessingReceipt(previewReceipt);
       setPaymentData({
-        paidAmount: previewReceipt.total.toString(),
-        paymentMethod: previewReceipt.paymentMethod,
-        currency: previewReceipt.currency
+        paidAmount: num(previewReceipt.total).toString(),
+        paymentMethod: (previewReceipt.paymentMethod as any) ?? 'efectivo',
+        currency: (previewReceipt.currency as any) ?? 'ARS',
       });
       setShowPaymentModal(true);
       setShowPreview(false);
@@ -141,23 +161,29 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
   const processPayment = () => {
     if (processingReceipt) {
-      const paidAmount = parseFloat(paymentData.paidAmount) || 0;
-      const remainingBalance = Math.max(0, processingReceipt.total - paidAmount);
-      
+      const paidAmount = num(paymentData.paidAmount);
+      const total = num(processingReceipt.total);
+      const remainingBalance = Math.max(0, total - paidAmount);
+
       const finalReceipt: Receipt = {
         ...processingReceipt,
         paidAmount,
         remainingBalance,
         paymentMethod: paymentData.paymentMethod,
         currency: paymentData.currency,
-        status: remainingBalance === 0 ? 'pagado' : 'pendiente'
+        status: remainingBalance === 0 ? 'pagado' : 'pendiente',
+        otherCharges: Array.isArray(processingReceipt.otherCharges) ? processingReceipt.otherCharges : [],
+        rent: num(processingReceipt.rent),
+        expenses: num(processingReceipt.expenses),
+        previousBalance: num(processingReceipt.previousBalance),
+        total,
       };
 
       setReceipts([...receipts, finalReceipt]);
-      
+
       // Actualizar saldo del inquilino
       updateTenantBalance(processingReceipt.tenant, remainingBalance);
-      
+
       // Agregar movimiento de caja si se pagó algo
       if (paidAmount > 0) {
         addCashMovement({
@@ -167,7 +193,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
           currency: paymentData.currency,
           date: new Date().toISOString().split('T')[0],
           tenant: processingReceipt.tenant,
-          property: processingReceipt.property
+          property: processingReceipt.property,
         });
       }
 
@@ -184,9 +210,9 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
         dueDate: '',
         previousBalance: '',
         currency: 'ARS',
-        paymentMethod: 'efectivo'
+        paymentMethod: 'efectivo',
       });
-      
+
       setShowModal(false);
       setShowPaymentModal(false);
       setProcessingReceipt(null);
@@ -197,27 +223,31 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   const addOtherCharge = () => {
     setFormData({
       ...formData,
-      otherCharges: [...formData.otherCharges, { description: '', amount: '' }]
+      otherCharges: [...(formData.otherCharges ?? []), { description: '', amount: '' }],
     });
   };
 
   const removeOtherCharge = (index: number) => {
-    const newCharges = formData.otherCharges.filter((_, i) => i !== index);
-    setFormData({ ...formData, otherCharges: newCharges });
+    const newCharges = (formData.otherCharges ?? []).filter((_, i) => i !== index);
+    setFormData({ ...formData, otherCharges: newCharges.length ? newCharges : [{ description: '', amount: '' }] });
   };
 
   const updateOtherCharge = (index: number, field: 'description' | 'amount', value: string) => {
-    const newCharges = [...formData.otherCharges];
+    const newCharges = [...(formData.otherCharges ?? [])];
     newCharges[index] = { ...newCharges[index], [field]: value };
     setFormData({ ...formData, otherCharges: newCharges });
   };
 
   const getStatusColor = (status: Receipt['status']) => {
     switch (status) {
-      case 'pagado': return 'bg-green-100 text-green-800';
-      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
-      case 'vencido': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pagado':
+        return 'bg-green-100 text-green-800';
+      case 'pendiente':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'vencido':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -225,11 +255,34 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const safeReceipt: Receipt = {
+      ...receipt,
+      rent: num(receipt.rent),
+      expenses: num(receipt.expenses),
+      previousBalance: num(receipt.previousBalance),
+      total: num(receipt.total),
+      paidAmount: num(receipt.paidAmount),
+      remainingBalance: num(receipt.remainingBalance),
+      otherCharges: Array.isArray(receipt.otherCharges) ? receipt.otherCharges : [],
+      tenant: receipt.tenant ?? '',
+      property: receipt.property ?? '',
+      building: receipt.building ?? '',
+      month: receipt.month ?? '',
+      createdDate: receipt.createdDate ?? '',
+      dueDate: receipt.dueDate ?? '',
+      currency: (receipt.currency as any) ?? 'ARS',
+      receiptNumber: receipt.receiptNumber ?? '',
+      year: receipt.year ?? new Date().getFullYear(),
+      paymentMethod: (receipt.paymentMethod as any) ?? 'efectivo',
+      status: (receipt.status as any) ?? 'pendiente',
+      id: receipt.id ?? Date.now(),
+    };
+
     const receiptHtml = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Recibo ${receipt.receiptNumber}</title>
+          <title>Recibo ${safeReceipt.receiptNumber}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
@@ -247,21 +300,21 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
         <body>
           <div class="header">
             <h1>RECIBO DE ALQUILER</h1>
-            <h2>${receipt.receiptNumber}</h2>
+            <h2>${safeReceipt.receiptNumber}</h2>
           </div>
           
           <div class="receipt-info">
             <div class="info-row">
-              <span><strong>Inquilino:</strong> ${receipt.tenant}</span>
-              <span><strong>Fecha de emisión:</strong> ${receipt.createdDate}</span>
+              <span><strong>Inquilino:</strong> ${safeReceipt.tenant}</span>
+              <span><strong>Fecha de emisión:</strong> ${safeReceipt.createdDate}</span>
             </div>
             <div class="info-row">
-              <span><strong>Propiedad:</strong> ${receipt.property}</span>
-              <span><strong>Fecha de vencimiento:</strong> ${receipt.dueDate}</span>
+              <span><strong>Propiedad:</strong> ${safeReceipt.property}</span>
+              <span><strong>Fecha de vencimiento:</strong> ${safeReceipt.dueDate}</span>
             </div>
             <div class="info-row">
-              <span class="building"><strong>Edificio:</strong> ${receipt.building}</span>
-              <span><strong>Período:</strong> ${receipt.month} ${receipt.year}</span>
+              <span class="building"><strong>Edificio:</strong> ${safeReceipt.building}</span>
+              <span><strong>Período:</strong> ${safeReceipt.month} ${safeReceipt.year}</span>
             </div>
           </div>
 
@@ -275,27 +328,45 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             <tbody>
               <tr>
                 <td>Alquiler</td>
-                <td style="text-align: right;">$${receipt.rent.toLocaleString()}</td>
+                <td style="text-align: right;">$${safeReceipt.rent.toLocaleString()}</td>
               </tr>
               <tr>
                 <td>Expensas</td>
-                <td style="text-align: right;">$${receipt.expenses.toLocaleString()}</td>
+                <td style="text-align: right;">$${safeReceipt.expenses.toLocaleString()}</td>
               </tr>
-              ${receipt.otherCharges.map(charge => `
+              ${safeReceipt.previousBalance > 0 ? `
                 <tr>
-                  <td>${charge.description}</td>
-                  <td style="text-align: right;">$${charge.amount.toLocaleString()}</td>
+                  <td>Saldo anterior</td>
+                  <td style="text-align: right;">$${safeReceipt.previousBalance.toLocaleString()}</td>
+                </tr>
+              ` : ''}
+              ${safeReceipt.otherCharges.map(charge => `
+                <tr>
+                  <td>${charge.description ?? ''}</td>
+                  <td style="text-align: right;">$${num((charge as any).amount).toLocaleString()}</td>
                 </tr>
               `).join('')}
               <tr class="total-row">
                 <td><strong>TOTAL A PAGAR</strong></td>
-                <td style="text-align: right;"><strong>$${receipt.total.toLocaleString()}</strong></td>
+                <td style="text-align: right;"><strong>${safeReceipt.currency} $${safeReceipt.total.toLocaleString()}</strong></td>
               </tr>
+              ${safeReceipt.paidAmount > 0 ? `
+                <tr>
+                  <td><strong>PAGADO</strong></td>
+                  <td style="text-align: right;"><strong>$${safeReceipt.paidAmount.toLocaleString()}</strong></td>
+                </tr>
+              ` : ''}
+              ${safeReceipt.remainingBalance > 0 ? `
+                <tr style="background-color: #fee2e2;">
+                  <td><strong>SALDO PENDIENTE</strong></td>
+                  <td style="text-align: right;"><strong>$${safeReceipt.remainingBalance.toLocaleString()}</strong></td>
+                </tr>
+              ` : ''}
             </tbody>
           </table>
 
           <div class="footer">
-            <p>Este recibo debe ser abonado antes del ${receipt.dueDate}</p>
+            <p>Este recibo debe ser abonado antes del ${safeReceipt.dueDate}</p>
             <p>Gracias por su puntualidad en el pago</p>
           </div>
         </body>
@@ -308,32 +379,45 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   };
 
   const viewReceipt = (receipt: Receipt) => {
-    setPreviewReceipt(receipt);
+    setPreviewReceipt({
+      ...receipt,
+      rent: num(receipt.rent),
+      expenses: num(receipt.expenses),
+      previousBalance: num(receipt.previousBalance),
+      total: num(receipt.total),
+      paidAmount: num(receipt.paidAmount),
+      remainingBalance: num(receipt.remainingBalance),
+      otherCharges: Array.isArray(receipt.otherCharges) ? receipt.otherCharges : [],
+    } as Receipt);
     setShowPreview(true);
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Recibos</h2>
           <p className="text-gray-600">Genera y gestiona los recibos de alquiler</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          <span>Generar Recibo</span>
-        </button>
-        <button
-          onClick={() => setShowMonthlySummary(true)}
-          className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-        >
-          <BarChart3 className="h-5 w-5" />
-          <span>Resumen Mensual</span>
-        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Generar Recibo</span>
+          </button>
+
+          <button
+            onClick={() => setShowMonthlySummary(true)}
+            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <BarChart3 className="h-5 w-5" />
+            <span>Resumen Mensual</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -365,80 +449,91 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Recibo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Inquilino
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Propiedad
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Período
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Estado
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Acciones
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recibo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquilino</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Propiedad</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Período</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {receipts.map((receipt) => (
-                <tr key={receipt.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <FileText className="h-5 w-5 text-blue-600 mr-3" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{receipt.receiptNumber}</div>
-                        <div className="text-sm text-gray-500">Creado: {receipt.createdDate}</div>
+              {receipts.map((receipt) => {
+                const safeTotal = num((receipt as any).total);
+                const safeStatus = (receipt as any).status ?? 'pendiente';
+                return (
+                  <tr key={receipt.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <FileText className="h-5 w-5 text-blue-600 mr-3" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{receipt.receiptNumber}</div>
+                          <div className="text-sm text-gray-500">Creado: {receipt.createdDate}</div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{receipt.tenant}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{receipt.property}</div>
-                    <div className="text-sm text-gray-500">{receipt.building}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{receipt.month} {receipt.year}</div>
-                    <div className="text-sm text-gray-500">Vence: {receipt.dueDate}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-gray-900">${receipt.total.toLocaleString()}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(receipt.status)}`}>
-                      {receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => viewReceipt(receipt)}
-                        className="text-gray-400 hover:text-blue-600 transition-colors"
-                        title="Ver recibo"
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{receipt.tenant}</div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{receipt.property}</div>
+                      <div className="text-sm text-gray-500">{receipt.building}</div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {receipt.month} {receipt.year}
+                      </div>
+                      <div className="text-sm text-gray-500">Vence: {receipt.dueDate}</div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-semibold text-gray-900">
+                        {(receipt as any).currency ?? 'ARS'} ${money(safeTotal)}
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          safeStatus
+                        )}`}
                       >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => printReceipt(receipt)}
-                        className="text-gray-400 hover:text-green-600 transition-colors"
-                        title="Imprimir recibo"
-                      >
-                        <Printer className="h-4 w-4" />
-                      </button>
-                    </div>
+                        {String(safeStatus).charAt(0).toUpperCase() + String(safeStatus).slice(1)}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => viewReceipt(receipt)}
+                          className="text-gray-400 hover:text-blue-600 transition-colors"
+                          title="Ver recibo"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => printReceipt(receipt)}
+                          className="text-gray-400 hover:text-green-600 transition-colors"
+                          title="Imprimir recibo"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {receipts.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                    No hay recibos cargados.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -499,7 +594,9 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                   >
                     <option value="">Seleccionar mes</option>
                     {months.map((month) => (
-                      <option key={month} value={month}>{month}</option>
+                      <option key={month} value={month}>
+                        {month}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -589,15 +686,11 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-700">Otros cargos</label>
-                  <button
-                    type="button"
-                    onClick={addOtherCharge}
-                    className="text-blue-600 hover:text-blue-700 text-sm"
-                  >
+                  <button type="button" onClick={addOtherCharge} className="text-blue-600 hover:text-blue-700 text-sm">
                     + Agregar cargo
                   </button>
                 </div>
-                {formData.otherCharges.map((charge, index) => (
+                {(formData.otherCharges ?? []).map((charge, index) => (
                   <div key={index} className="grid grid-cols-2 gap-2 mb-2">
                     <input
                       type="text"
@@ -614,7 +707,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                         onChange={(e) => updateOtherCharge(index, 'amount', e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
-                      {formData.otherCharges.length > 1 && (
+                      {(formData.otherCharges ?? []).length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeOtherCharge(index)}
@@ -636,10 +729,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                   Previsualizar Recibo
                 </button>
               </div>
@@ -653,12 +743,12 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Pago</h3>
-            
+
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">Total del recibo:</p>
                 <p className="text-xl font-bold text-gray-900">
-                  {processingReceipt.currency} ${processingReceipt.total.toLocaleString()}
+                  {(processingReceipt.currency ?? 'ARS') as any} ${money(processingReceipt.total)}
                 </p>
               </div>
 
@@ -698,10 +788,10 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                 </select>
               </div>
 
-              {parseFloat(paymentData.paidAmount) < processingReceipt.total && (
+              {num(paymentData.paidAmount) < num(processingReceipt.total) && (
                 <div className="bg-yellow-50 p-3 rounded-lg">
                   <p className="text-sm text-yellow-800">
-                    Saldo pendiente: ${(processingReceipt.total - parseFloat(paymentData.paidAmount || '0')).toLocaleString()}
+                    Saldo pendiente: {money(num(processingReceipt.total) - num(paymentData.paidAmount))}
                   </p>
                 </div>
               )}
@@ -754,14 +844,26 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <p><strong>Inquilino:</strong> {previewReceipt.tenant}</p>
-                  <p><strong>Propiedad:</strong> {previewReceipt.property}</p>
-                  <p className="text-gray-600"><strong>Edificio:</strong> {previewReceipt.building}</p>
+                  <p>
+                    <strong>Inquilino:</strong> {previewReceipt.tenant}
+                  </p>
+                  <p>
+                    <strong>Propiedad:</strong> {previewReceipt.property}
+                  </p>
+                  <p className="text-gray-600">
+                    <strong>Edificio:</strong> {previewReceipt.building}
+                  </p>
                 </div>
                 <div>
-                  <p><strong>Fecha de emisión:</strong> {previewReceipt.createdDate}</p>
-                  <p><strong>Fecha de vencimiento:</strong> {previewReceipt.dueDate}</p>
-                  <p><strong>Período:</strong> {previewReceipt.month} {previewReceipt.year}</p>
+                  <p>
+                    <strong>Fecha de emisión:</strong> {previewReceipt.createdDate}
+                  </p>
+                  <p>
+                    <strong>Fecha de vencimiento:</strong> {previewReceipt.dueDate}
+                  </p>
+                  <p>
+                    <strong>Período:</strong> {previewReceipt.month} {previewReceipt.year}
+                  </p>
                 </div>
               </div>
 
@@ -775,28 +877,28 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                 <tbody>
                   <tr>
                     <td className="border border-gray-300 px-4 py-2">Alquiler</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">${previewReceipt.rent.toLocaleString()}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">${money(previewReceipt.rent)}</td>
                   </tr>
                   <tr>
                     <td className="border border-gray-300 px-4 py-2">Expensas</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">${previewReceipt.expenses.toLocaleString()}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">${money(previewReceipt.expenses)}</td>
                   </tr>
-                  {previewReceipt.previousBalance > 0 && (
+                  {num(previewReceipt.previousBalance) > 0 && (
                     <tr>
                       <td className="border border-gray-300 px-4 py-2">Saldo anterior</td>
-                      <td className="border border-gray-300 px-4 py-2 text-right">${previewReceipt.previousBalance.toLocaleString()}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-right">${money(previewReceipt.previousBalance)}</td>
                     </tr>
                   )}
-                  {previewReceipt.otherCharges.map((charge, index) => (
+                  {(previewReceipt.otherCharges ?? []).map((charge: any, index: number) => (
                     <tr key={index}>
-                      <td className="border border-gray-300 px-4 py-2">{charge.description}</td>
-                      <td className="border border-gray-300 px-4 py-2 text-right">${charge.amount.toLocaleString()}</td>
+                      <td className="border border-gray-300 px-4 py-2">{charge.description ?? ''}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-right">${money(charge.amount)}</td>
                     </tr>
                   ))}
                   <tr className="bg-gray-100 font-bold">
                     <td className="border border-gray-300 px-4 py-2">TOTAL A PAGAR</td>
                     <td className="border border-gray-300 px-4 py-2 text-right">
-                      {previewReceipt.currency} ${previewReceipt.total.toLocaleString()}
+                      {(previewReceipt.currency ?? 'ARS') as any} ${money(previewReceipt.total)}
                     </td>
                   </tr>
                 </tbody>
@@ -838,12 +940,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
       {/* Monthly Summary Modal */}
       {showMonthlySummary && (
-        <MonthlySummary
-          receipts={receipts}
-          tenants={tenants}
-          properties={properties}
-          onClose={() => setShowMonthlySummary(false)}
-        />
+        <MonthlySummary receipts={receipts} tenants={tenants} properties={properties} onClose={() => setShowMonthlySummary(false)} />
       )}
     </div>
   );
