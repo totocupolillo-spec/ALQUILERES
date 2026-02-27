@@ -10,6 +10,7 @@ import CashRegister from './components/CashRegister';
 import DataManager from './components/DataManager';
 import AuthComponent from './components/AuthComponent';
 import { supabase } from './lib/supabase';
+import { firebaseSmokeTest } from './lib/firebaseTest';
 
 type TabType = 'dashboard' | 'properties' | 'tenants' | 'receipts' | 'history' | 'cash';
 
