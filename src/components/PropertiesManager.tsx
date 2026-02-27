@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Building2, MapPin, Edit, Trash2, Eye, Calendar, FileText, Filter, Home, Users as UsersIcon } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Plus, Building2, MapPin, Edit, Trash2, Eye, Calendar, Filter, Home, Users as UsersIcon } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { Property } from '../App';
 
@@ -23,44 +23,65 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
     expenses: '',
     contractStart: '',
     contractEnd: '',
-    notes: ''
+    notes: '',
   });
+
+  // Helpers seguros (evitan pantalla blanca si faltan campos)
+  const safeText = (v: unknown, fallback = ''): string =>
+    typeof v === 'string' ? v : v == null ? fallback : String(v);
+
+  const safeNumber = (v: unknown, fallback = 0): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const safeStatus = (v: unknown): Property['status'] => {
+    const s = safeText(v, 'disponible');
+    if (s === 'ocupado' || s === 'disponible' || s === 'mantenimiento') return s;
+    return 'disponible';
+  };
+
+  const prettyStatus = (statusLike: unknown) => {
+    const s = safeText(statusLike, '');
+    if (!s) return 'Sin estado';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newProperty: Property = {
       id: editingProperty ? editingProperty.id : Date.now(),
-      name: formData.name,
+      name: safeText(formData.name),
       type: formData.type,
-      building: formData.building,
-      address: formData.address,
-      rent: parseFloat(formData.rent),
-      expenses: parseFloat(formData.expenses),
-      tenant: editingProperty?.tenant || null,
-      status: editingProperty?.status || 'disponible',
-      contractStart: formData.contractStart,
-      contractEnd: formData.contractEnd,
+      building: safeText(formData.building),
+      address: safeText(formData.address),
+      rent: safeNumber(formData.rent, 0),
+      expenses: safeNumber(formData.expenses, 0),
+      tenant: editingProperty?.tenant ?? null,
+      status: editingProperty?.status ?? 'disponible',
+      contractStart: safeText(formData.contractStart),
+      contractEnd: safeText(formData.contractEnd),
       lastUpdated: new Date().toISOString().split('T')[0],
-      notes: formData.notes
+      notes: safeText(formData.notes),
     };
 
     if (editingProperty) {
-      setProperties(properties.map(p => p.id === editingProperty.id ? newProperty : p));
+      setProperties(properties.map((p) => (p.id === editingProperty.id ? newProperty : p)));
     } else {
       setProperties([...properties, newProperty]);
     }
 
-    setFormData({ 
-      name: '', 
-      type: 'departamento', 
-      building: '', 
-      address: '', 
-      rent: '', 
-      expenses: '', 
-      contractStart: '', 
-      contractEnd: '', 
-      notes: '' 
+    setFormData({
+      name: '',
+      type: 'departamento',
+      building: '',
+      address: '',
+      rent: '',
+      expenses: '',
+      contractStart: '',
+      contractEnd: '',
+      notes: '',
     });
     setShowModal(false);
     setEditingProperty(null);
@@ -69,43 +90,47 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
   const handleEdit = (property: Property) => {
     setEditingProperty(property);
     setFormData({
-      name: property.name,
-      type: property.type,
-      building: property.building,
-      address: property.address,
-      rent: property.rent.toString(),
-      expenses: property.expenses.toString(),
-      contractStart: property.contractStart,
-      contractEnd: property.contractEnd,
-      notes: property.notes
+      name: safeText(property?.name),
+      type: property?.type ?? 'departamento',
+      building: safeText(property?.building),
+      address: safeText(property?.address),
+      rent: String(safeNumber(property?.rent, 0)),
+      expenses: String(safeNumber(property?.expenses, 0)),
+      contractStart: safeText(property?.contractStart),
+      contractEnd: safeText(property?.contractEnd),
+      notes: safeText(property?.notes),
     });
     setShowModal(true);
   };
 
   const handleDelete = (id: number) => {
     if (confirm('¿Está seguro de eliminar esta propiedad?')) {
-      setProperties(properties.filter(p => p.id !== id));
+      setProperties(properties.filter((p) => p.id !== id));
     }
   };
 
   const getStatusColor = (status: Property['status']) => {
     switch (status) {
-      case 'ocupado': return 'bg-green-100 text-green-800';
-      case 'disponible': return 'bg-blue-100 text-blue-800';
-      case 'mantenimiento': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'ocupado':
+        return 'bg-green-100 text-green-800';
+      case 'disponible':
+        return 'bg-blue-100 text-blue-800';
+      case 'mantenimiento':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getTypeLabel = (type: Property['type']) => {
-    const labels = {
+    const labels: Record<Property['type'], string> = {
       departamento: 'Departamento',
       galpon: 'Galpón',
       local: 'Local',
       oficina: 'Oficina',
-      otro: 'Otro'
+      otro: 'Otro',
     };
-    return labels[type];
+    return labels[type] ?? 'Otro';
   };
 
   const handleDragEnd = (result: any) => {
@@ -118,23 +143,27 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
     setProperties(items);
   };
 
-  // Filtrar propiedades según el estado seleccionado
-  const filteredProperties = properties.filter(property => {
-    if (filterStatus === 'all') return true;
-    return property.status === filterStatus;
-  });
+  // Filtrar propiedades según el estado seleccionado (safe)
+  const filteredProperties = useMemo(() => {
+    return properties.filter((property) => {
+      const st = safeStatus((property as any)?.status);
+      if (filterStatus === 'all') return true;
+      return st === filterStatus;
+    });
+  }, [properties, filterStatus]);
 
-  // Agrupar propiedades por edificio
-  const propertiesByBuilding = properties.reduce((acc, property) => {
-    if (!acc[property.building]) {
-      acc[property.building] = [];
-    }
-    acc[property.building].push(property);
-    return acc;
-  }, {} as Record<string, Property[]>);
+  // Agrupar propiedades por edificio (safe)
+  const propertiesByBuilding = useMemo(() => {
+    return properties.reduce((acc, property) => {
+      const b = safeText((property as any)?.building, 'Sin edificio');
+      if (!acc[b]) acc[b] = [];
+      acc[b].push(property);
+      return acc;
+    }, {} as Record<string, Property[]>);
+  }, [properties]);
 
   const getStatusCount = (status: Property['status']) => {
-    return properties.filter(p => p.status === status).length;
+    return properties.filter((p) => safeStatus((p as any)?.status) === status).length;
   };
 
   return (
@@ -147,16 +176,16 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
         </div>
         <button
           onClick={() => {
-            setFormData({ 
-              name: '', 
-              type: 'departamento', 
-              building: '', 
-              address: '', 
-              rent: '', 
-              expenses: '', 
-              contractStart: '', 
-              contractEnd: '', 
-              notes: '' 
+            setFormData({
+              name: '',
+              type: 'departamento',
+              building: '',
+              address: '',
+              rent: '',
+              expenses: '',
+              contractStart: '',
+              contractEnd: '',
+              notes: '',
             });
             setEditingProperty(null);
             setShowModal(true);
@@ -178,9 +207,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
               <button
                 onClick={() => setFilterStatus('all')}
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  filterStatus === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 Todas ({properties.length})
@@ -188,9 +215,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
               <button
                 onClick={() => setFilterStatus('disponible')}
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'disponible'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  filterStatus === 'disponible' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 Disponibles ({getStatusCount('disponible')})
@@ -198,9 +223,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
               <button
                 onClick={() => setFilterStatus('ocupado')}
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'ocupado'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  filterStatus === 'ocupado' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 Ocupadas ({getStatusCount('ocupado')})
@@ -224,9 +247,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
             <button
               onClick={() => setViewMode('grid')}
               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
               <Home className="h-4 w-4 inline mr-1" />
@@ -235,9 +256,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
             <button
               onClick={() => setViewMode('building')}
               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === 'building'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                viewMode === 'building' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
               <Building2 className="h-4 w-4 inline mr-1" />
@@ -249,112 +268,121 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
 
       {/* Properties Display */}
       {viewMode === 'grid' ? (
-        /* Grid View with Drag and Drop */
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="properties" direction="horizontal">
             {(provided) => (
-              <div 
+              <div
                 {...provided.droppableProps}
                 ref={provided.innerRef}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                {filteredProperties.map((property, index) => (
-                  <Draggable key={property.id.toString()} draggableId={property.id.toString()} index={index}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className={`bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 ${
-                          snapshot.isDragging ? 'shadow-lg scale-105 rotate-2' : ''
-                        }`}
-                      >
-                        <div className="p-6">
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <h3 className="text-lg font-semibold text-gray-900">{property.name}</h3>
-                              <p className="text-sm text-gray-500">{getTypeLabel(property.type)}</p>
-                              <p className="text-sm text-blue-600 font-medium">{property.building}</p>
-                            </div>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(property.status)}`}>
-                              {property.status.charAt(0).toUpperCase() + property.status.slice(1)}
-                            </span>
-                          </div>
+                {filteredProperties.map((property, index) => {
+                  const status = safeStatus((property as any)?.status);
+                  const rent = safeNumber((property as any)?.rent, 0);
+                  const expenses = safeNumber((property as any)?.expenses, 0);
+                  const building = safeText((property as any)?.building, 'Sin edificio');
+                  const address = safeText((property as any)?.address, '-');
+                  const name = safeText((property as any)?.name, 'Sin nombre');
 
-                          <div className="space-y-3">
-                            <div className="flex items-center text-gray-600">
-                              <MapPin className="h-4 w-4 mr-2" />
-                              <span className="text-sm">{property.address}</span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                  return (
+                    <Draggable key={String(property.id)} draggableId={String(property.id)} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className={`bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 ${
+                            snapshot.isDragging ? 'shadow-lg scale-105 rotate-2' : ''
+                          }`}
+                        >
+                          <div className="p-6">
+                            <div className="flex items-start justify-between mb-4">
                               <div>
-                                <p className="text-xs text-gray-500">Alquiler</p>
-                                <p className="font-semibold text-gray-900">${property.rent.toLocaleString()}</p>
+                                <h3 className="text-lg font-semibold text-gray-900">{name}</h3>
+                                <p className="text-sm text-gray-500">{getTypeLabel(property.type ?? 'otro')}</p>
+                                <p className="text-sm text-blue-600 font-medium">{building}</p>
                               </div>
-                              <div>
-                                <p className="text-xs text-gray-500">Expensas</p>
-                                <p className="font-semibold text-gray-900">${property.expenses.toLocaleString()}</p>
-                              </div>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                  status
+                                )}`}
+                              >
+                                {prettyStatus(status)}
+                              </span>
                             </div>
 
-                            {property.tenant && (
-                              <div>
-                                <p className="text-xs text-gray-500">Inquilino</p>
-                                <p className="font-medium text-gray-900">{property.tenant}</p>
-                              </div>
-                            )}
-
-                            {property.contractStart && property.contractEnd && (
+                            <div className="space-y-3">
                               <div className="flex items-center text-gray-600">
-                                <Calendar className="h-4 w-4 mr-2" />
-                                <span className="text-xs">
-                                  {property.contractStart} - {property.contractEnd}
-                                </span>
+                                <MapPin className="h-4 w-4 mr-2" />
+                                <span className="text-sm">{address}</span>
                               </div>
-                            )}
 
-                            {property.notes && (
-                              <div>
-                                <p className="text-xs text-gray-500">Notas</p>
-                                <p className="text-sm text-gray-700 truncate">{property.notes}</p>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <p className="text-xs text-gray-500">Alquiler</p>
+                                  <p className="font-semibold text-gray-900">${rent.toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Expensas</p>
+                                  <p className="font-semibold text-gray-900">${expenses.toLocaleString()}</p>
+                                </div>
                               </div>
-                            )}
 
-                            <div className="text-xs text-gray-500">
-                              Actualizado: {property.lastUpdated}
+                              {property.tenant ? (
+                                <div>
+                                  <p className="text-xs text-gray-500">Inquilino</p>
+                                  <p className="font-medium text-gray-900">{safeText(property.tenant)}</p>
+                                </div>
+                              ) : null}
+
+                              {property.contractStart && property.contractEnd ? (
+                                <div className="flex items-center text-gray-600">
+                                  <Calendar className="h-4 w-4 mr-2" />
+                                  <span className="text-xs">
+                                    {safeText(property.contractStart)} - {safeText(property.contractEnd)}
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {property.notes ? (
+                                <div>
+                                  <p className="text-xs text-gray-500">Notas</p>
+                                  <p className="text-sm text-gray-700 truncate">{safeText(property.notes)}</p>
+                                </div>
+                              ) : null}
+
+                              <div className="text-xs text-gray-500">Actualizado: {safeText(property.lastUpdated, '-')}</div>
                             </div>
-                          </div>
 
-                          <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
-                            <button className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(property)}
-                              className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(property.id)}
-                              className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
+                              <button className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleEdit(property)}
+                                className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(property.id)}
+                                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </Draggable>
-                ))}
+                      )}
+                    </Draggable>
+                  );
+                })}
                 {provided.placeholder}
               </div>
             )}
           </Droppable>
         </DragDropContext>
       ) : (
-        /* Building View */
         <div className="space-y-6">
           {Object.entries(propertiesByBuilding).map(([building, buildingProperties]) => (
             <div key={building} className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -365,75 +393,79 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">{building}</h3>
                       <p className="text-sm text-gray-500">
-                        {buildingProperties.length} propiedades • 
-                        {buildingProperties.filter(p => p.status === 'ocupado').length} ocupadas • 
-                        {buildingProperties.filter(p => p.status === 'disponible').length} disponibles
+                        {buildingProperties.length} propiedades • {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'ocupado').length}{' '}
+                        ocupadas • {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'disponible').length} disponibles
                       </p>
                     </div>
                   </div>
                   <div className="flex space-x-2">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       <UsersIcon className="h-3 w-3 mr-1" />
-                      {buildingProperties.filter(p => p.status === 'ocupado').length} ocupadas
+                      {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'ocupado').length} ocupadas
                     </span>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       <Home className="h-3 w-3 mr-1" />
-                      {buildingProperties.filter(p => p.status === 'disponible').length} disponibles
+                      {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'disponible').length} disponibles
                     </span>
                   </div>
                 </div>
               </div>
-              
+
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {buildingProperties.map((property) => (
-                    <div key={property.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{property.name}</h4>
-                          <p className="text-sm text-gray-500">{getTypeLabel(property.type)}</p>
-                        </div>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(property.status)}`}>
-                          {property.status.charAt(0).toUpperCase() + property.status.slice(1)}
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Alquiler:</span>
-                          <span className="font-medium">${property.rent.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Expensas:</span>
-                          <span className="font-medium">${property.expenses.toLocaleString()}</span>
-                        </div>
-                        {property.tenant && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Inquilino:</span>
-                            <span className="font-medium text-blue-600">{property.tenant}</span>
+                  {buildingProperties.map((property) => {
+                    const status = safeStatus((property as any)?.status);
+                    const rent = safeNumber((property as any)?.rent, 0);
+                    const expenses = safeNumber((property as any)?.expenses, 0);
+                    const name = safeText((property as any)?.name, 'Sin nombre');
+
+                    return (
+                      <div key={property.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="font-medium text-gray-900">{name}</h4>
+                            <p className="text-sm text-gray-500">{getTypeLabel(property.type ?? 'otro')}</p>
                           </div>
-                        )}
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                              status
+                            )}`}
+                          >
+                            {prettyStatus(status)}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Alquiler:</span>
+                            <span className="font-medium">${rent.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Expensas:</span>
+                            <span className="font-medium">${expenses.toLocaleString()}</span>
+                          </div>
+                          {property.tenant ? (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">Inquilino:</span>
+                              <span className="font-medium text-blue-600">{safeText(property.tenant)}</span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex justify-end space-x-1 mt-3 pt-3 border-t border-gray-100">
+                          <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleEdit(property)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDelete(property.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      
-                      <div className="flex justify-end space-x-1 mt-3 pt-3 border-t border-gray-100">
-                        <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(property)}
-                          className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(property.id)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -446,10 +478,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
           <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No hay propiedades</h3>
           <p className="text-gray-500">
-            {filterStatus === 'all' 
-              ? 'No hay propiedades registradas.' 
-              : `No hay propiedades con estado "${filterStatus}".`
-            }
+            {filterStatus === 'all' ? 'No hay propiedades registradas.' : `No hay propiedades con estado "${filterStatus}".`}
           </p>
         </div>
       )}
@@ -577,10 +606,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setPr
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                   {editingProperty ? 'Actualizar' : 'Agregar'}
                 </button>
               </div>
