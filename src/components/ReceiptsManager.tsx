@@ -55,6 +55,12 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
     const property = properties.find(p => p.id === tenant.propertyId);
     if (!property) return;
 
+    const rent = property.rent ?? 0;
+    const expenses = property.expenses ?? 0;
+    const previousBalance = tenant.balance ?? 0;
+
+    const total = rent + expenses + previousBalance;
+
     if (isUpdateMonth(tenant)) {
       alert('⚠ Este mes corresponde actualización de contrato. Verificá el monto antes de continuar.');
     }
@@ -67,16 +73,16 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
       building: property.building,
       month: new Date().toLocaleString('default', { month: 'long' }),
       year: new Date().getFullYear(),
-      rent: property.rent ?? 0,
-      expenses: property.expenses ?? 0,
+      rent,
+      expenses,
       otherCharges: [],
-      previousBalance: tenant.balance ?? 0,
-      total: (property.rent ?? 0) + (property.expenses ?? 0) + (tenant.balance ?? 0),
+      previousBalance,
+      total,
       paidAmount: 0,
-      remainingBalance: (property.rent ?? 0) + (property.expenses ?? 0) + (tenant.balance ?? 0),
+      remainingBalance: total,
       currency: 'ARS',
       paymentMethod: 'efectivo',
-      status: 'pendiente',
+      status: total > 0 ? 'pendiente' : 'pagado',
       dueDate: new Date().toISOString(),
       createdDate: new Date().toISOString()
     };
@@ -85,6 +91,8 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
     setShowGenerateModal(false);
     setSelectedTenantId(null);
+
+    alert('✅ Recibo generado correctamente');
   };
 
   const printReceipt = (receipt: Receipt) => {
