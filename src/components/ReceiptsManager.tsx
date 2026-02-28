@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Printer, BarChart3 } from 'lucide-react';
+import { Plus, Eye, Printer, BarChart3 } from 'lucide-react';
 import { Tenant, Receipt, CashMovement, Property } from '../App';
 import MonthlySummary from './MonthlySummary';
 
@@ -23,6 +23,8 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
   const [showMonthlySummary, setShowMonthlySummary] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
 
   const normalizeReceipt = (r: Receipt): Receipt => ({
     ...r,
@@ -30,6 +32,60 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
     paidAmount: r.paidAmount ?? 0,
     remainingBalance: r.remainingBalance ?? 0
   });
+
+  const isUpdateMonth = (tenant: Tenant) => {
+    if (!tenant.contractStart || !tenant.updateFrequencyMonths) return false;
+
+    const start = new Date(tenant.contractStart);
+    const now = new Date();
+
+    const monthsDiff =
+      (now.getFullYear() - start.getFullYear()) * 12 +
+      (now.getMonth() - start.getMonth());
+
+    return monthsDiff > 0 && monthsDiff % tenant.updateFrequencyMonths === 0;
+  };
+
+  const generateReceipt = () => {
+    if (!selectedTenantId) return;
+
+    const tenant = tenants.find(t => t.id === selectedTenantId);
+    if (!tenant) return;
+
+    const property = properties.find(p => p.id === tenant.propertyId);
+    if (!property) return;
+
+    if (isUpdateMonth(tenant)) {
+      alert('⚠ Este mes corresponde actualización de contrato. Verificá el monto antes de continuar.');
+    }
+
+    const newReceipt: Receipt = {
+      id: Date.now(),
+      receiptNumber: `R-${Date.now()}`,
+      tenant: tenant.name,
+      property: property.name,
+      building: property.building,
+      month: new Date().toLocaleString('default', { month: 'long' }),
+      year: new Date().getFullYear(),
+      rent: property.rent ?? 0,
+      expenses: property.expenses ?? 0,
+      otherCharges: [],
+      previousBalance: tenant.balance ?? 0,
+      total: (property.rent ?? 0) + (property.expenses ?? 0) + (tenant.balance ?? 0),
+      paidAmount: 0,
+      remainingBalance: (property.rent ?? 0) + (property.expenses ?? 0) + (tenant.balance ?? 0),
+      currency: 'ARS',
+      paymentMethod: 'efectivo',
+      status: 'pendiente',
+      dueDate: new Date().toISOString(),
+      createdDate: new Date().toISOString()
+    };
+
+    setReceipts(prev => [newReceipt, ...prev]);
+
+    setShowGenerateModal(false);
+    setSelectedTenantId(null);
+  };
 
   const printReceipt = (receipt: Receipt) => {
     const safe = normalizeReceipt(receipt);
@@ -59,13 +115,23 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
 
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Recibos</h2>
-        <button
-          onClick={() => setShowMonthlySummary(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-        >
-          <BarChart3 className="h-4 w-4" />
-          Resumen Mensual
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowGenerateModal(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Generar Recibo
+          </button>
+
+          <button
+            onClick={() => setShowMonthlySummary(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Resumen Mensual
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow border overflow-hidden">
@@ -111,6 +177,41 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
           </tbody>
         </table>
       </div>
+
+      {showGenerateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md space-y-4">
+            <h3 className="font-semibold text-lg">Generar Recibo</h3>
+
+            <select
+              value={selectedTenantId ?? ''}
+              onChange={e => setSelectedTenantId(Number(e.target.value))}
+              className="w-full border p-2 rounded"
+            >
+              <option value="">Seleccionar Inquilino</option>
+              {tenants.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="bg-gray-300 px-4 py-2 rounded"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={generateReceipt}
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Generar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedReceipt && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
