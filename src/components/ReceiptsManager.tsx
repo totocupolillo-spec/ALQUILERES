@@ -10,6 +10,11 @@ interface ReceiptsManagerProps {
   setReceipts: React.Dispatch<React.SetStateAction<Receipt[]>>;
 }
 
+const months = [
+  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+];
+
 const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   tenants,
   properties,
@@ -17,9 +22,8 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   setReceipts
 }) => {
 
-  const [showMonthlySummary, setShowMonthlySummary] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [showMonthlySummary, setShowMonthlySummary] = useState(false);
 
   const [form, setForm] = useState<any>({
     tenantId: '',
@@ -38,19 +42,19 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   const selectedProperty = properties.find(p => p.id === selectedTenant?.propertyId);
 
   const total = useMemo(() => {
-    const other = form.otherCharges.reduce((acc: number, c: any) => acc + Number(c.amount || 0), 0);
-    return Number(form.rent || 0) +
-           Number(form.expenses || 0) +
-           Number(form.previousBalance || 0) +
-           other;
+    const extras = form.otherCharges.reduce((acc: number, c: any) => acc + Number(c.amount || 0), 0);
+    return Number(form.rent || 0)
+      + Number(form.expenses || 0)
+      + Number(form.previousBalance || 0)
+      + extras;
   }, [form]);
 
   const handleGenerate = () => {
-    if (!selectedTenant || !selectedProperty) return;
+    if (!selectedTenant || !selectedProperty || !form.month) return;
 
     const newReceipt: Receipt = {
       id: Date.now(),
-      receiptNumber: `R-${Date.now()}`,
+      receiptNumber: `REC-${Date.now()}`,
       tenant: selectedTenant.name,
       property: selectedProperty.name,
       building: selectedProperty.building,
@@ -77,7 +81,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   return (
     <div className="space-y-6">
 
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between">
         <h2 className="text-2xl font-bold">Recibos</h2>
         <div className="flex gap-3">
           <button
@@ -87,18 +91,17 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             <Plus size={16} />
             Nuevo Recibo
           </button>
-
           <button
             onClick={() => setShowMonthlySummary(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
           >
-            <BarChart3 size={16} />
+            <BarChart3 size={16}/>
             Resumen Mensual
           </button>
         </div>
       </div>
 
-      {/* 🔥 TABLA DE RECIBOS (ESTO FALTABA) */}
+      {/* TABLA */}
       <div className="bg-white rounded-xl shadow border overflow-hidden">
         <table className="min-w-full">
           <thead className="bg-blue-50">
@@ -107,7 +110,6 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
               <th className="px-6 py-3 text-left text-xs uppercase">Inquilino</th>
               <th className="px-6 py-3 text-left text-xs uppercase">Total</th>
               <th className="px-6 py-3 text-left text-xs uppercase">Estado</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -125,93 +127,122 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
                     {r.remainingBalance > 0 ? 'Pendiente' : 'Pagado'}
                   </span>
                 </td>
-                <td>
-                  <button
-                    onClick={() => setSelectedReceipt(r)}
-                    className="text-blue-600"
-                  >
-                    <Eye size={16} />
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* 🔥 MODAL GENERAR */}
+      {/* MODAL PROFESIONAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-3xl rounded-xl p-8 space-y-6">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl p-8 space-y-6">
 
             <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold">Nuevo Recibo</h3>
+              <h3 className="text-2xl font-semibold">Nuevo Recibo</h3>
               <button onClick={() => setShowModal(false)}>
                 <X />
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
-              <select
-                className="border p-2 rounded"
-                value={form.tenantId}
-                onChange={e => {
-                  const tenant = tenants.find(t => t.id === Number(e.target.value));
-                  const property = properties.find(p => p.id === tenant?.propertyId);
 
-                  setForm({
-                    ...form,
-                    tenantId: e.target.value,
-                    rent: property?.rent ?? 0,
-                    expenses: property?.expenses ?? 0,
-                    previousBalance: tenant?.balance ?? 0
-                  });
-                }}
-              >
-                <option value="">Seleccionar inquilino</option>
-                {tenants.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-sm mb-1">Inquilino</label>
+                <select
+                  value={form.tenantId}
+                  onChange={e => {
+                    const tenant = tenants.find(t => t.id === Number(e.target.value));
+                    const property = properties.find(p => p.id === tenant?.propertyId);
 
-              <input
-                placeholder="Mes"
-                className="border p-2 rounded"
-                value={form.month}
-                onChange={e => setForm({...form, month: e.target.value})}
-              />
+                    setForm({
+                      ...form,
+                      tenantId: e.target.value,
+                      rent: property?.rent ?? 0,
+                      expenses: property?.expenses ?? 0,
+                      previousBalance: tenant?.balance ?? 0
+                    });
+                  }}
+                  className="w-full border rounded-lg px-4 py-2"
+                >
+                  <option value="">Seleccionar inquilino</option>
+                  {tenants.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
 
-              <input
-                type="number"
-                placeholder="Alquiler"
-                className="border p-2 rounded"
-                value={form.rent}
-                onChange={e => setForm({...form, rent: Number(e.target.value)})}
-              />
+              <div>
+                <label className="block text-sm mb-1">Mes</label>
+                <select
+                  value={form.month}
+                  onChange={e => setForm({...form, month: e.target.value})}
+                  className="w-full border rounded-lg px-4 py-2"
+                >
+                  <option value="">Seleccionar mes</option>
+                  {months.map(m => (
+                    <option key={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
 
-              <input
-                type="number"
-                placeholder="Expensas"
-                className="border p-2 rounded"
-                value={form.expenses}
-                onChange={e => setForm({...form, expenses: Number(e.target.value)})}
-              />
+              <div>
+                <label className="block text-sm mb-1">Alquiler</label>
+                <input
+                  type="number"
+                  value={form.rent}
+                  onChange={e => setForm({...form, rent: Number(e.target.value)})}
+                  className="w-full border rounded-lg px-4 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Expensas</label>
+                <input
+                  type="number"
+                  value={form.expenses}
+                  onChange={e => setForm({...form, expenses: Number(e.target.value)})}
+                  className="w-full border rounded-lg px-4 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Saldo Anterior</label>
+                <input
+                  type="number"
+                  value={form.previousBalance}
+                  onChange={e => setForm({...form, previousBalance: Number(e.target.value)})}
+                  className="w-full border rounded-lg px-4 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Vencimiento</label>
+                <input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={e => setForm({...form, dueDate: e.target.value})}
+                  className="w-full border rounded-lg px-4 py-2"
+                />
+              </div>
+
             </div>
 
-            <div className="text-right font-semibold text-lg">
+            <div className="text-right text-xl font-bold">
               Total: ${total.toLocaleString()}
             </div>
 
             <div className="flex justify-end gap-4">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 border rounded"
+                className="px-6 py-2 border rounded-lg"
               >
                 Cancelar
               </button>
+
               <button
                 onClick={handleGenerate}
-                className="px-4 py-2 bg-blue-600 text-white rounded"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg"
               >
                 Generar Recibo
               </button>
