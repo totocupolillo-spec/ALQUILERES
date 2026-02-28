@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Building2, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
 import { Property, BUILDINGS } from '../App';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
@@ -8,6 +8,22 @@ interface PropertiesManagerProps {
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
 }
 
+const emptyProperty = (): Property => ({
+  id: Date.now(),
+  name: '',
+  type: 'departamento',
+  building: 'Ramos Mejia',
+  address: '',
+  rent: 0,
+  expenses: 0,
+  tenant: null,
+  status: 'disponible',
+  contractStart: '',
+  contractEnd: '',
+  lastUpdated: '',
+  notes: ''
+});
+
 const PropertiesManager: React.FC<PropertiesManagerProps> = ({
   properties,
   setProperties
@@ -15,22 +31,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
 
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-
-  const [formData, setFormData] = useState<Property>({
-    id: Date.now(),
-    name: '',
-    type: 'departamento',
-    building: 'Ramos Mejia',
-    address: '',
-    rent: 0,
-    expenses: 0,
-    tenant: null,
-    status: 'disponible',
-    contractStart: '',
-    contractEnd: '',
-    lastUpdated: '',
-    notes: ''
-  });
+  const [formData, setFormData] = useState<Property>(emptyProperty());
 
   const handleSave = () => {
     if (!formData.name || !formData.address) return;
@@ -45,6 +46,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
 
     setShowModal(false);
     setEditingProperty(null);
+    setFormData(emptyProperty());
   };
 
   const handleDelete = (id: number) => {
@@ -64,44 +66,32 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
 
+      {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Propiedades</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Propiedades</h2>
         <button
           onClick={() => {
             setEditingProperty(null);
-            setFormData({
-              id: Date.now(),
-              name: '',
-              type: 'departamento',
-              building: 'Ramos Mejia',
-              address: '',
-              rent: 0,
-              expenses: 0,
-              tenant: null,
-              status: 'disponible',
-              contractStart: '',
-              contractEnd: '',
-              lastUpdated: '',
-              notes: ''
-            });
+            setFormData(emptyProperty());
             setShowModal(true);
           }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow"
         >
-          <Plus className="h-4 w-4" />
-          Agregar
+          <Plus size={16} />
+          Nueva Propiedad
         </button>
       </div>
 
+      {/* Lista */}
       <DragDropContext onDragEnd={onDragEnd}>
         <Droppable droppableId="properties">
           {(provided) => (
             <div
               {...provided.droppableProps}
               ref={provided.innerRef}
-              className="space-y-3"
+              className="space-y-4"
             >
               {properties.map((property, index) => (
                 <Draggable
@@ -114,37 +104,44 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      className="bg-white p-4 rounded-xl shadow border hover:bg-blue-50"
+                      className="bg-white rounded-xl shadow border p-5 hover:bg-blue-50 transition"
                     >
-                      <div className="flex justify-between">
-                        <div>
-                          <p className="font-semibold">{property.name}</p>
-                          <p className="text-sm text-gray-600">
-                            {property.building} - {property.address}
+                      <div className="flex justify-between items-start">
+
+                        <div className="space-y-1">
+                          <p className="font-semibold text-lg">
+                            {property.name}
                           </p>
-                          <p className="text-sm">
-                          ${(property.rent ?? 0).toLocaleString()}
+
+                          <p className="text-sm text-gray-500">
+                            {property.building} • {property.address}
+                          </p>
+
+                          <p className="text-blue-700 font-medium">
+                            ${ (property.rent ?? 0).toLocaleString() }
                           </p>
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="flex gap-4">
                           <button
                             onClick={() => {
                               setEditingProperty(property);
                               setFormData(property);
                               setShowModal(true);
                             }}
-                            className="text-blue-600"
+                            className="text-blue-600 hover:text-blue-800"
                           >
-                            <Edit size={16} />
+                            <Edit size={18} />
                           </button>
+
                           <button
                             onClick={() => handleDelete(property.id)}
-                            className="text-red-600"
+                            className="text-red-600 hover:text-red-800"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={18} />
                           </button>
                         </div>
+
                       </div>
                     </div>
                   )}
@@ -156,82 +153,140 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
         </Droppable>
       </DragDropContext>
 
+      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-xl w-full max-w-lg space-y-4">
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
 
-            <h3 className="text-lg font-semibold">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-8 space-y-6">
+
+            <h3 className="text-2xl font-bold text-gray-800">
               {editingProperty ? 'Editar Propiedad' : 'Nueva Propiedad'}
             </h3>
 
-            <input
-              placeholder="Nombre"
-              value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
-              className="w-full border p-2 rounded-lg"
-            />
+            {/* General */}
+            <div className="grid grid-cols-2 gap-6">
 
-            {/* 🔥 DESPLEGABLE EDIFICIOS */}
-            <select
-              value={formData.building}
-              onChange={e => setFormData({ ...formData, building: e.target.value })}
-              className="w-full border p-2 rounded-lg"
-            >
-              {BUILDINGS.map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
+              <div className="col-span-2">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Nombre
+                </label>
+                <input
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Departamento 2A"
+                />
+              </div>
 
-            <input
-              placeholder="Dirección"
-              value={formData.address}
-              onChange={e => setFormData({ ...formData, address: e.target.value })}
-              className="w-full border p-2 rounded-lg"
-            />
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Edificio
+                </label>
+                <select
+                  value={formData.building}
+                  onChange={e => setFormData({ ...formData, building: e.target.value })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                >
+                  {BUILDINGS.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
 
-            <input
-              type="number"
-              placeholder="Alquiler"
-              value={formData.rent}
-              onChange={e => setFormData({ ...formData, rent: Number(e.target.value) })}
-              className="w-full border p-2 rounded-lg"
-            />
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Dirección
+                </label>
+                <input
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-            <input
-              type="number"
-              placeholder="Expensas"
-              value={formData.expenses}
-              onChange={e => setFormData({ ...formData, expenses: Number(e.target.value) })}
-              className="w-full border p-2 rounded-lg"
-            />
+            </div>
 
-            <input
-              type="date"
-              value={formData.contractStart}
-              onChange={e => setFormData({ ...formData, contractStart: e.target.value })}
-              className="w-full border p-2 rounded-lg"
-            />
+            {/* Valores */}
+            <div className="grid grid-cols-2 gap-6">
 
-            <input
-              type="date"
-              value={formData.contractEnd}
-              onChange={e => setFormData({ ...formData, contractEnd: e.target.value })}
-              className="w-full border p-2 rounded-lg"
-            />
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Alquiler Mensual
+                </label>
+                <input
+                  type="number"
+                  value={formData.rent || ''}
+                  onChange={e => setFormData({ ...formData, rent: Number(e.target.value) })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ingrese monto"
+                />
+              </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Expensas
+                </label>
+                <input
+                  type="number"
+                  value={formData.expenses || ''}
+                  onChange={e => setFormData({ ...formData, expenses: Number(e.target.value) })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ingrese monto"
+                />
+              </div>
+
+            </div>
+
+            {/* Contrato */}
+            <div className="grid grid-cols-2 gap-6">
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Inicio de contrato
+                </label>
+                <input
+                  type="date"
+                  value={formData.contractStart}
+                  onChange={e => setFormData({ ...formData, contractStart: e.target.value })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Fin de contrato
+                </label>
+                <input
+                  type="date"
+                  value={formData.contractEnd}
+                  onChange={e => setFormData({ ...formData, contractEnd: e.target.value })}
+                  className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+            </div>
+
+            {/* Botones */}
+            <div className="flex justify-end gap-4 pt-6 border-t">
+
               <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 border rounded-lg"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingProperty(null);
+                  setFormData(emptyProperty());
+                }}
+                className="px-6 py-2 border rounded-lg hover:bg-gray-50"
               >
                 Cancelar
               </button>
+
               <button
                 onClick={handleSave}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow"
               >
-                Guardar
+                Guardar Propiedad
               </button>
+
             </div>
 
           </div>
