@@ -6,59 +6,64 @@ interface PaymentsHistoryProps {
   receipts: Receipt[];
 }
 
-const safeNumber = (value: any) => {
-  const n = Number(value);
-  return isNaN(n) ? 0 : n;
-};
-
-const safeString = (value: any) => value ?? '';
+const safeNumber = (v: any) => Number(v ?? 0);
 
 const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
 
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
-  // 🔒 Normalizamos datos por si Firebase trae campos faltantes
-  const payments = useMemo(() => {
-    return (receipts || []).map((receipt, index) => ({
-      id: receipt?.id ?? `temp-${index}`,
-      createdDate: safeString(receipt?.createdDate),
-      receiptNumber: safeString(receipt?.receiptNumber),
-      tenant: safeString(receipt?.tenant),
-      property: safeString(receipt?.property),
-      year: receipt?.year ?? currentYear,
-      amount: safeNumber(receipt?.paidAmount),
-      total: safeNumber(receipt?.total),
-      remaining: safeNumber(receipt?.remainingBalance)
+  const normalizedPayments = useMemo(() => {
+    return receipts.map(r => ({
+      id: r.id,
+      date: new Date(r.createdDate),
+      tenant: r.tenant,
+      property: r.property,
+      amount: safeNumber(r.paidAmount)
     }));
   }, [receipts]);
 
-  const filteredPayments = payments.filter(p => p.year === selectedYear);
+  const filteredPayments = useMemo(() => {
 
-  const totalAmount = filteredPayments.reduce(
-    (sum, payment) => sum + safeNumber(payment.amount),
-    0
-  );
+    return normalizedPayments.filter(p => {
+
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (p.date < from) return false;
+      }
+
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23,59,59,999);
+        if (p.date > to) return false;
+      }
+
+      return true;
+    });
+
+  }, [normalizedPayments, fromDate, toDate]);
+
+  const totalAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
 
   const exportToCSV = () => {
-    const headers = ['Fecha', 'Recibo', 'Inquilino', 'Propiedad', 'Monto'];
+
+    const headers = ['Fecha','Inquilino','Propiedad','Monto'];
 
     const rows = filteredPayments.map(p => [
-      safeString(p.createdDate),
-      safeString(p.receiptNumber),
-      safeString(p.tenant),
-      safeString(p.property),
-      safeNumber(p.amount)
+      p.date.toLocaleDateString(),
+      p.tenant,
+      p.property,
+      p.amount
     ]);
 
     const csvContent = [headers, ...rows]
-      .map(row => row.join(','))
+      .map(r => r.join(','))
       .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `historial_${selectedYear}.csv`;
+    link.download = `historial_filtrado.csv`;
     link.click();
   };
 
@@ -66,59 +71,69 @@ const PaymentsHistory: React.FC<PaymentsHistoryProps> = ({ receipts }) => {
     <div className="space-y-6">
 
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Historial de Pagos</h2>
+        <h2 className="text-2xl font-bold">Historial de Pagos</h2>
         <button
           onClick={exportToCSV}
-          className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
-          <Download className="h-5 w-5" />
-          <span>Exportar CSV</span>
+          <Download className="h-4 w-4" />
+          Exportar
         </button>
       </div>
 
-      <div className="text-sm text-gray-600">
-        Total del año {selectedYear}:{' '}
-        <strong>${safeNumber(totalAmount).toLocaleString()}</strong>
+      {/* Filtros */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+          className="border px-3 py-2 rounded-lg"
+        />
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+          className="border px-3 py-2 rounded-lg"
+        />
+        <div className="flex items-center font-semibold text-blue-800">
+          Total: ${totalAmount.toLocaleString()}
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recibo</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inquilino</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monto</th>
-            </tr>
-          </thead>
-
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredPayments.map(payment => (
-              <tr key={payment.id}>
-                <td className="px-6 py-4 text-sm">
-                  {payment.createdDate || '-'}
-                </td>
-                <td className="px-6 py-4 text-sm">
-                  {payment.receiptNumber || '-'}
-                </td>
-                <td className="px-6 py-4 text-sm">
-                  {payment.tenant || '-'}
-                </td>
-                <td className="px-6 py-4 text-sm font-semibold">
-                  ${safeNumber(payment.amount).toLocaleString()}
-                </td>
-              </tr>
-            ))}
-
-            {filteredPayments.length === 0 && (
+      {/* Tabla */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="max-h-96 overflow-y-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-blue-50">
               <tr>
-                <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
-                  No hay pagos registrados.
-                </td>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Fecha</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Inquilino</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Propiedad</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Monto</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredPayments.map(p => (
+                <tr key={p.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">{p.date.toLocaleDateString()}</td>
+                  <td className="px-6 py-4">{p.tenant}</td>
+                  <td className="px-6 py-4">{p.property}</td>
+                  <td className="px-6 py-4 font-semibold text-blue-700">
+                    ${p.amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+
+              {filteredPayments.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="text-center py-6 text-gray-500">
+                    No hay pagos en el rango seleccionado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div>
