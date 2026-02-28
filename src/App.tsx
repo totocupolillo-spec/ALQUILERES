@@ -1,19 +1,21 @@
-// 🔥 SOLO CAMBIO REAL:
-// 👉 Se pasa receipts a TenantsManager
+export interface Tenant {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  propertyId: number | null;
+  property: string;
+  contractStart: string;
+  contractEnd: string;
 
-// (todo el archivo es igual al tuyo excepto esa parte)
+  updateFrequencyMonths: number;   // 🔥 NUEVO
 
-...
-
-      case 'tenants':
-        return (
-          <TenantsManager
-            tenants={tenants}
-            setTenants={setTenants}
-            properties={properties}
-            receipts={receipts}   // 🔵 AGREGADO
-            updatePropertyTenant={updatePropertyTenant}
-          />
-        );
-
-...
+  deposit: number;
+  guarantor: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  balance: number;
+  status: 'activo' | 'vencido' | 'pendiente';
+}
