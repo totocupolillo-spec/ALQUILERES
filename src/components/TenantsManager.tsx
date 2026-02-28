@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Plus, Edit, Trash2, X, Eye } from 'lucide-react';
-import { Tenant, Property, Receipt } from '../App';
+import { Tenant, Property } from '../types';
+import { Receipt } from '../App';
 import { generateObligations, calculateTenantFinancialStatus } from '../utils/financialEngine';
 
 interface TenantsManagerProps {
