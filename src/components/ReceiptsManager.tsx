@@ -37,24 +37,6 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   const selectedTenant = tenants.find(t => t.id === Number(form.tenantId));
   const selectedProperty = properties.find(p => p.id === selectedTenant?.propertyId);
 
-  const isUpdateMonth = () => {
-    if (!selectedTenant || !selectedTenant.contractStart) return false;
-
-    const start = new Date(selectedTenant.contractStart);
-    const now = new Date(form.year, new Date().getMonth());
-
-    const monthsDiff =
-      (now.getFullYear() - start.getFullYear()) * 12 +
-      (now.getMonth() - start.getMonth());
-
-    return monthsDiff > 0 && monthsDiff % selectedTenant.updateFrequencyMonths === 0;
-  };
-
-  const suggestedRent = useMemo(() => {
-    if (!selectedProperty) return 0;
-    return selectedProperty.rent ?? 0;
-  }, [selectedProperty]);
-
   const total = useMemo(() => {
     const other = form.otherCharges.reduce((acc: number, c: any) => acc + Number(c.amount || 0), 0);
     return Number(form.rent || 0) +
@@ -105,6 +87,7 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             <Plus size={16} />
             Nuevo Recibo
           </button>
+
           <button
             onClick={() => setShowMonthlySummary(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
@@ -115,9 +98,51 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
         </div>
       </div>
 
+      {/* 🔥 TABLA DE RECIBOS (ESTO FALTABA) */}
+      <div className="bg-white rounded-xl shadow border overflow-hidden">
+        <table className="min-w-full">
+          <thead className="bg-blue-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs uppercase">Recibo</th>
+              <th className="px-6 py-3 text-left text-xs uppercase">Inquilino</th>
+              <th className="px-6 py-3 text-left text-xs uppercase">Total</th>
+              <th className="px-6 py-3 text-left text-xs uppercase">Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipts.map(r => (
+              <tr key={r.id} className="hover:bg-blue-50">
+                <td className="px-6 py-4">{r.receiptNumber}</td>
+                <td>{r.tenant}</td>
+                <td>${(r.total ?? 0).toLocaleString()}</td>
+                <td>
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    r.remainingBalance > 0
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-green-100 text-green-700'
+                  }`}>
+                    {r.remainingBalance > 0 ? 'Pendiente' : 'Pagado'}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    onClick={() => setSelectedReceipt(r)}
+                    className="text-blue-600"
+                  >
+                    <Eye size={16} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 🔥 MODAL GENERAR */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-4xl rounded-xl p-8 space-y-6">
+          <div className="bg-white w-full max-w-3xl rounded-xl p-8 space-y-6">
 
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-semibold">Nuevo Recibo</h3>
@@ -126,130 +151,51 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
               </button>
             </div>
 
-            {isUpdateMonth() && (
-              <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded">
-                ⚠ Este mes corresponde actualización de alquiler.
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-6">
+              <select
+                className="border p-2 rounded"
+                value={form.tenantId}
+                onChange={e => {
+                  const tenant = tenants.find(t => t.id === Number(e.target.value));
+                  const property = properties.find(p => p.id === tenant?.propertyId);
 
-              <div>
-                <label>Inquilino</label>
-                <select
-                  className="w-full border p-2 rounded"
-                  value={form.tenantId}
-                  onChange={e => {
-                    const tenant = tenants.find(t => t.id === Number(e.target.value));
-                    const property = properties.find(p => p.id === tenant?.propertyId);
-
-                    setForm({
-                      ...form,
-                      tenantId: e.target.value,
-                      rent: property?.rent ?? 0,
-                      expenses: property?.expenses ?? 0,
-                      previousBalance: tenant?.balance ?? 0
-                    });
-                  }}
-                >
-                  <option value="">Seleccionar inquilino</option>
-                  {tenants.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label>Mes</label>
-                <input
-                  className="w-full border p-2 rounded"
-                  value={form.month}
-                  onChange={e => setForm({...form, month: e.target.value})}
-                  placeholder="Ej: Marzo"
-                />
-              </div>
-
-              <div>
-                <label>Año</label>
-                <input
-                  type="number"
-                  className="w-full border p-2 rounded"
-                  value={form.year}
-                  onChange={e => setForm({...form, year: Number(e.target.value)})}
-                />
-              </div>
-
-              <div>
-                <label>Alquiler</label>
-                <input
-                  type="number"
-                  className="w-full border p-2 rounded"
-                  value={form.rent}
-                  onChange={e => setForm({...form, rent: Number(e.target.value)})}
-                />
-              </div>
-
-              <div>
-                <label>Expensas</label>
-                <input
-                  type="number"
-                  className="w-full border p-2 rounded"
-                  value={form.expenses}
-                  onChange={e => setForm({...form, expenses: Number(e.target.value)})}
-                />
-              </div>
-
-              <div>
-                <label>Saldo Anterior</label>
-                <input
-                  type="number"
-                  className="w-full border p-2 rounded"
-                  value={form.previousBalance}
-                  onChange={e => setForm({...form, previousBalance: Number(e.target.value)})}
-                />
-              </div>
-
-            </div>
-
-            <div>
-              <h4 className="font-semibold">Otros Cargos</h4>
-              {form.otherCharges.map((charge: any, index: number) => (
-                <div key={index} className="flex gap-3 mt-2">
-                  <input
-                    placeholder="Descripción"
-                    className="flex-1 border p-2 rounded"
-                    value={charge.description}
-                    onChange={e => {
-                      const updated = [...form.otherCharges];
-                      updated[index].description = e.target.value;
-                      setForm({...form, otherCharges: updated});
-                    }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Monto"
-                    className="w-32 border p-2 rounded"
-                    value={charge.amount}
-                    onChange={e => {
-                      const updated = [...form.otherCharges];
-                      updated[index].amount = e.target.value;
-                      setForm({...form, otherCharges: updated});
-                    }}
-                  />
-                </div>
-              ))}
-
-              <button
-                onClick={() =>
                   setForm({
                     ...form,
-                    otherCharges: [...form.otherCharges, { description: '', amount: 0 }]
-                  })
-                }
-                className="text-blue-600 mt-2"
+                    tenantId: e.target.value,
+                    rent: property?.rent ?? 0,
+                    expenses: property?.expenses ?? 0,
+                    previousBalance: tenant?.balance ?? 0
+                  });
+                }}
               >
-                + Agregar cargo
-              </button>
+                <option value="">Seleccionar inquilino</option>
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+
+              <input
+                placeholder="Mes"
+                className="border p-2 rounded"
+                value={form.month}
+                onChange={e => setForm({...form, month: e.target.value})}
+              />
+
+              <input
+                type="number"
+                placeholder="Alquiler"
+                className="border p-2 rounded"
+                value={form.rent}
+                onChange={e => setForm({...form, rent: Number(e.target.value)})}
+              />
+
+              <input
+                type="number"
+                placeholder="Expensas"
+                className="border p-2 rounded"
+                value={form.expenses}
+                onChange={e => setForm({...form, expenses: Number(e.target.value)})}
+              />
             </div>
 
             <div className="text-right font-semibold text-lg">
