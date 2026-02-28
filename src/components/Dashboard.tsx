@@ -1,247 +1,170 @@
-import React, { useMemo } from 'react';
-import { Building2, Users, FileText, AlertTriangle, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Building2, Users, FileText, AlertTriangle, TrendingUp, Calendar, DollarSign, X } from 'lucide-react';
 import { Property, Tenant, Receipt } from '../App';
 
 interface DashboardProps {
   properties?: Property[];
   tenants?: Tenant[];
   receipts?: Receipt[];
-  // Lo estás pasando desde App. Lo dejo opcional para no romper nada.
-  setActiveTab?: (tab: any) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ properties, tenants, receipts }) => {
+
+  const [modalType, setModalType] = useState<'income' | 'debt' | 'pending' | null>(null);
+
   const safeProperties = properties ?? [];
   const safeTenants = tenants ?? [];
   const safeReceipts = receipts ?? [];
 
   const stats = useMemo(() => {
-    const totalProperties = safeProperties.length;
-    const occupiedProperties = safeProperties.filter(p => p.status === 'ocupado').length;
-    const availableProperties = safeProperties.filter(p => p.status === 'disponible').length;
-    const totalTenants = safeTenants.length;
 
     const currentMonth = new Date().toLocaleString('es-ES', { month: 'long' });
     const currentYear = new Date().getFullYear();
 
     const monthReceipts = safeReceipts.filter(r =>
-      (r.month || '').toLowerCase() === currentMonth.toLowerCase() && r.year === currentYear
+      (r.month || '').toLowerCase() === currentMonth.toLowerCase() &&
+      r.year === currentYear
     );
 
     const totalIncome = monthReceipts.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
 
-    // Deudores: priorizamos tenant.balance, pero si viene en 0 y hay recibos con saldo, tomamos el más reciente.
-    const latestDebtByTenant = new Map<string, number>();
-    const latestDateByTenant = new Map<string, number>();
+    const debtMap = new Map<string, number>();
 
     safeReceipts.forEach(r => {
-      if (!r.tenant) return;
-      const hasDebt = (r.remainingBalance || 0) > 0;
-      if (!hasDebt) return;
-      const dateNum = new Date(r.createdDate || Date.now()).getTime();
-      const prev = latestDateByTenant.get(r.tenant);
-      if (!prev || dateNum >= prev) {
-        latestDateByTenant.set(r.tenant, dateNum);
-        latestDebtByTenant.set(r.tenant, r.remainingBalance || 0);
+      if ((r.remainingBalance || 0) > 0) {
+        const prev = debtMap.get(r.tenant) || 0;
+        debtMap.set(r.tenant, prev + (r.remainingBalance || 0));
       }
     });
 
-    const debtors = safeTenants
-      .map(t => {
-        const fallback = latestDebtByTenant.get(t.name) ?? 0;
-        const debt = Math.max(t.balance || 0, fallback);
-        return { tenant: t, debt };
-      })
-      .filter(x => x.debt > 0)
-      .sort((a, b) => b.debt - a.debt);
+    const debtors = Array.from(debtMap.entries()).map(([tenant, debt]) => ({
+      tenant,
+      debt
+    })).sort((a, b) => b.debt - a.debt);
 
-    const pendingPayments = debtors.length;
     const totalDebt = debtors.reduce((sum, d) => sum + d.debt, 0);
 
-    const recentReceipts = [...safeReceipts]
-      .sort((a, b) => new Date(b.createdDate || 0).getTime() - new Date(a.createdDate || 0).getTime())
-      .slice(0, 5);
-
     return {
-      totalProperties,
-      occupiedProperties,
-      availableProperties,
-      totalTenants,
+      totalProperties: safeProperties.length,
+      totalTenants: safeTenants.length,
       totalIncome,
-      pendingPayments,
       totalDebt,
-      recentReceipts,
-      debtors
+      pendingPayments: debtors.length,
+      debtors,
+      monthReceipts
     };
+
   }, [safeProperties, safeTenants, safeReceipts]);
 
   return (
     <div className="space-y-6">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Propiedades</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalProperties}</p>
-            </div>
-            <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Building2 className="h-6 w-6 text-blue-600" />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-between text-sm">
-            <span className="text-green-600">{stats.occupiedProperties} Ocupadas</span>
-            <span className="text-gray-500">{stats.availableProperties} Disponibles</span>
-          </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <p className="text-sm text-gray-600">Propiedades</p>
+          <p className="text-2xl font-bold">{stats.totalProperties}</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Inquilinos</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalTenants}</p>
-            </div>
-            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <Users className="h-6 w-6 text-green-600" />
-            </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-500">
-            <span>Activos en el sistema</span>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <p className="text-sm text-gray-600">Inquilinos</p>
+          <p className="text-2xl font-bold">{stats.totalTenants}</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Ingresos del Mes</p>
-              <p className="text-2xl font-bold text-gray-900">${stats.totalIncome.toLocaleString()}</p>
-            </div>
-            <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="h-6 w-6 text-purple-600" />
-            </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-500">
-            <span>Cobranzas registradas</span>
-          </div>
+        <div
+          onClick={() => setModalType('income')}
+          className="bg-blue-50 border border-blue-200 rounded-xl shadow-sm p-6 cursor-pointer hover:bg-blue-100 transition"
+        >
+          <p className="text-sm text-blue-600">Ingresos del Mes</p>
+          <p className="text-2xl font-bold text-blue-900">
+            ${stats.totalIncome.toLocaleString()}
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Pagos Pendientes</p>
-              <p className="text-2xl font-bold text-red-600">{stats.pendingPayments}</p>
+        <div
+          onClick={() => setModalType('debt')}
+          className="bg-red-50 border border-red-200 rounded-xl shadow-sm p-6 cursor-pointer hover:bg-red-100 transition"
+        >
+          <p className="text-sm text-red-600">Total Adeudado</p>
+          <p className="text-2xl font-bold text-red-800">
+            ${stats.totalDebt.toLocaleString()}
+          </p>
+          <p className="text-xs text-red-600">
+            {stats.pendingPayments} deudores
+          </p>
+        </div>
+
+      </div>
+
+      {/* Deudores con scroll */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4">Clientes que Deben</h3>
+
+        <div className="max-h-72 overflow-y-auto space-y-3 pr-2">
+          {stats.debtors.map(({ tenant, debt }) => (
+            <div key={tenant} className="flex justify-between bg-red-50 p-3 rounded-lg">
+              <span>{tenant}</span>
+              <span className="text-red-700 font-semibold">
+                ${debt.toLocaleString()}
+              </span>
             </div>
-            <div className="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="h-6 w-6 text-red-600" />
-            </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-500">
-            <span>
-              Deuda total: <strong className="text-red-600">${stats.totalDebt.toLocaleString()}</strong>
-            </span>
-          </div>
+          ))}
+
+          {stats.debtors.length === 0 && (
+            <p className="text-gray-500 text-center">No hay deudores</p>
+          )}
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <TrendingUp className="h-5 w-5 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Recibos Recientes</h3>
-          </div>
+      {/* Modal detalle */}
+      {modalType && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
 
-          <div className="space-y-3">
-            {stats.recentReceipts.map((receipt) => (
-              <div key={receipt.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{receipt.tenant}</p>
-                  <p className="text-sm text-gray-600">{receipt.property} - {receipt.month} {receipt.year}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">${(receipt.total || 0).toLocaleString()}</p>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      receipt.status === 'pagado'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
-                  >
-                    {receipt.status === 'pagado' ? 'Pagado' : 'Pendiente'}
-                  </span>
-                </div>
+            <div className="flex justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                {modalType === 'income' && 'Detalle Ingresos'}
+                {modalType === 'debt' && 'Detalle Deudores'}
+              </h3>
+              <button onClick={() => setModalType(null)}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {modalType === 'income' && (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {stats.monthReceipts.map(r => (
+                  <div key={r.id} className="flex justify-between border-b pb-2">
+                    <span>{r.tenant}</span>
+                    <span className="text-blue-700 font-semibold">
+                      ${Number(r.paidAmount).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+                {stats.monthReceipts.length === 0 && (
+                  <p className="text-gray-500 text-center">No hay ingresos este mes</p>
+                )}
               </div>
-            ))}
-
-            {stats.recentReceipts.length === 0 && (
-              <p className="text-gray-500 text-center py-4">No hay recibos registrados</p>
             )}
-          </div>
-        </div>
 
-        {/* Debtors */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <FileText className="h-5 w-5 text-red-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Clientes que Deben</h3>
-          </div>
-
-          <div className="space-y-3">
-            {stats.debtors.slice(0, 8).map(({ tenant, debt }) => (
-              <div
-                key={tenant.id}
-                className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">{tenant.name}</p>
-                  <p className="text-sm text-gray-600">{tenant.property || 'Sin propiedad'}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-red-700">${debt.toLocaleString()}</p>
-                  <p className="text-xs text-red-600">Pendiente</p>
-                </div>
+            {modalType === 'debt' && (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {stats.debtors.map(d => (
+                  <div key={d.tenant} className="flex justify-between border-b pb-2">
+                    <span>{d.tenant}</span>
+                    <span className="text-red-700 font-semibold">
+                      ${d.debt.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-
-            {stats.debtors.length === 0 && (
-              <p className="text-gray-500 text-center py-4">No hay deudores registrados</p>
             )}
 
-            {stats.debtors.length > 8 && (
-              <p className="text-xs text-gray-500">Mostrando 8 de {stats.debtors.length} deudores</p>
-            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Upcoming Dues (placeholder) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Calendar className="h-5 w-5 text-orange-600" />
-          <h3 className="text-lg font-semibold text-gray-900">Próximos Vencimientos</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-orange-50 rounded-lg">
-            <p className="text-sm font-medium text-orange-800">Esta Semana</p>
-            <p className="text-2xl font-bold text-orange-900">{Math.min(stats.pendingPayments, 3)}</p>
-            <p className="text-sm text-orange-700">Vencimientos próximos</p>
-          </div>
-
-          <div className="p-4 bg-yellow-50 rounded-lg">
-            <p className="text-sm font-medium text-yellow-800">Este Mes</p>
-            <p className="text-2xl font-bold text-yellow-900">{Math.min(stats.pendingPayments, 7)}</p>
-            <p className="text-sm text-yellow-700">Pagos pendientes</p>
-          </div>
-
-          <div className="p-4 bg-green-50 rounded-lg">
-            <p className="text-sm font-medium text-green-800">Al Día</p>
-            <p className="text-2xl font-bold text-green-900">{Math.max(stats.totalTenants - stats.pendingPayments, 0)}</p>
-            <p className="text-sm text-green-700">Inquilinos al corriente</p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
