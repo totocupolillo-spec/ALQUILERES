@@ -1,619 +1,243 @@
-import React, { useMemo, useState } from 'react';
-import { Plus, Building2, MapPin, Edit, Trash2, Eye, Calendar, Filter, Home, Users as UsersIcon } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Building2, Edit, Trash2 } from 'lucide-react';
+import { Property, BUILDINGS } from '../App';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { Property } from '../App';
 
 interface PropertiesManagerProps {
   properties: Property[];
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
 }
 
-const PropertiesManager: React.FC<PropertiesManagerProps> = ({ properties, setProperties }) => {
+const PropertiesManager: React.FC<PropertiesManagerProps> = ({
+  properties,
+  setProperties
+}) => {
+
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'disponible' | 'ocupado' | 'mantenimiento'>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'building'>('grid');
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Property>({
+    id: Date.now(),
     name: '',
-    type: 'departamento' as Property['type'],
-    building: '',
+    type: 'departamento',
+    building: 'Ramos Mejia',
     address: '',
-    rent: '',
-    expenses: '',
+    rent: 0,
+    expenses: 0,
+    tenant: null,
+    status: 'disponible',
     contractStart: '',
     contractEnd: '',
-    notes: '',
+    lastUpdated: '',
+    notes: ''
   });
 
-  // Helpers seguros (evitan pantalla blanca si faltan campos)
-  const safeText = (v: unknown, fallback = ''): string =>
-    typeof v === 'string' ? v : v == null ? fallback : String(v);
-
-  const safeNumber = (v: unknown, fallback = 0): number => {
-    const n = typeof v === 'number' ? v : Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  };
-
-  const safeStatus = (v: unknown): Property['status'] => {
-    const s = safeText(v, 'disponible');
-    if (s === 'ocupado' || s === 'disponible' || s === 'mantenimiento') return s;
-    return 'disponible';
-  };
-
-  const prettyStatus = (statusLike: unknown) => {
-    const s = safeText(statusLike, '');
-    if (!s) return 'Sin estado';
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const newProperty: Property = {
-      id: editingProperty ? editingProperty.id : Date.now(),
-      name: safeText(formData.name),
-      type: formData.type,
-      building: safeText(formData.building),
-      address: safeText(formData.address),
-      rent: safeNumber(formData.rent, 0),
-      expenses: safeNumber(formData.expenses, 0),
-      tenant: editingProperty?.tenant ?? null,
-      status: editingProperty?.status ?? 'disponible',
-      contractStart: safeText(formData.contractStart),
-      contractEnd: safeText(formData.contractEnd),
-      lastUpdated: new Date().toISOString().split('T')[0],
-      notes: safeText(formData.notes),
-    };
+  const handleSave = () => {
+    if (!formData.name || !formData.address) return;
 
     if (editingProperty) {
-      setProperties(properties.map((p) => (p.id === editingProperty.id ? newProperty : p)));
+      setProperties(prev =>
+        prev.map(p => p.id === editingProperty.id ? formData : p)
+      );
     } else {
-      setProperties([...properties, newProperty]);
+      setProperties(prev => [...prev, { ...formData, id: Date.now() }]);
     }
 
-    setFormData({
-      name: '',
-      type: 'departamento',
-      building: '',
-      address: '',
-      rent: '',
-      expenses: '',
-      contractStart: '',
-      contractEnd: '',
-      notes: '',
-    });
     setShowModal(false);
     setEditingProperty(null);
   };
 
-  const handleEdit = (property: Property) => {
-    setEditingProperty(property);
-    setFormData({
-      name: safeText(property?.name),
-      type: property?.type ?? 'departamento',
-      building: safeText(property?.building),
-      address: safeText(property?.address),
-      rent: String(safeNumber(property?.rent, 0)),
-      expenses: String(safeNumber(property?.expenses, 0)),
-      contractStart: safeText(property?.contractStart),
-      contractEnd: safeText(property?.contractEnd),
-      notes: safeText(property?.notes),
-    });
-    setShowModal(true);
-  };
-
   const handleDelete = (id: number) => {
-    if (confirm('¿Está seguro de eliminar esta propiedad?')) {
-      setProperties(properties.filter((p) => p.id !== id));
+    if (confirm('¿Eliminar propiedad?')) {
+      setProperties(prev => prev.filter(p => p.id !== id));
     }
   };
 
-  const getStatusColor = (status: Property['status']) => {
-    switch (status) {
-      case 'ocupado':
-        return 'bg-green-100 text-green-800';
-      case 'disponible':
-        return 'bg-blue-100 text-blue-800';
-      case 'mantenimiento':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getTypeLabel = (type: Property['type']) => {
-    const labels: Record<Property['type'], string> = {
-      departamento: 'Departamento',
-      galpon: 'Galpón',
-      local: 'Local',
-      oficina: 'Oficina',
-      otro: 'Otro',
-    };
-    return labels[type] ?? 'Otro';
-  };
-
-  const handleDragEnd = (result: any) => {
+  const onDragEnd = (result: any) => {
     if (!result.destination) return;
 
     const items = Array.from(properties);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
+    const [reordered] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reordered);
 
     setProperties(items);
   };
 
-  // Filtrar propiedades según el estado seleccionado (safe)
-  const filteredProperties = useMemo(() => {
-    return properties.filter((property) => {
-      const st = safeStatus((property as any)?.status);
-      if (filterStatus === 'all') return true;
-      return st === filterStatus;
-    });
-  }, [properties, filterStatus]);
-
-  // Agrupar propiedades por edificio (safe)
-  const propertiesByBuilding = useMemo(() => {
-    return properties.reduce((acc, property) => {
-      const b = safeText((property as any)?.building, 'Sin edificio');
-      if (!acc[b]) acc[b] = [];
-      acc[b].push(property);
-      return acc;
-    }, {} as Record<string, Property[]>);
-  }, [properties]);
-
-  const getStatusCount = (status: Property['status']) => {
-    return properties.filter((p) => safeStatus((p as any)?.status) === status).length;
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header */}
+
       <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Propiedades</h2>
-          <p className="text-gray-600">Gestiona todas tus propiedades en alquiler</p>
-        </div>
+        <h2 className="text-2xl font-bold text-gray-900">Propiedades</h2>
         <button
           onClick={() => {
+            setEditingProperty(null);
             setFormData({
+              id: Date.now(),
               name: '',
               type: 'departamento',
-              building: '',
+              building: 'Ramos Mejia',
               address: '',
-              rent: '',
-              expenses: '',
+              rent: 0,
+              expenses: 0,
+              tenant: null,
+              status: 'disponible',
               contractStart: '',
               contractEnd: '',
-              notes: '',
+              lastUpdated: '',
+              notes: ''
             });
-            setEditingProperty(null);
             setShowModal(true);
           }}
-          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
         >
-          <Plus className="h-5 w-5" />
-          <span>Agregar Propiedad</span>
+          <Plus className="h-4 w-4" />
+          Agregar
         </button>
       </div>
 
-      {/* Filters and View Toggle */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Status Filters */}
-          <div className="flex items-center space-x-2">
-            <Filter className="h-5 w-5 text-gray-400" />
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setFilterStatus('all')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Todas ({properties.length})
-              </button>
-              <button
-                onClick={() => setFilterStatus('disponible')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'disponible' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Disponibles ({getStatusCount('disponible')})
-              </button>
-              <button
-                onClick={() => setFilterStatus('ocupado')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'ocupado' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Ocupadas ({getStatusCount('ocupado')})
-              </button>
-              <button
-                onClick={() => setFilterStatus('mantenimiento')}
-                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  filterStatus === 'mantenimiento'
-                    ? 'bg-yellow-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Mantenimiento ({getStatusCount('mantenimiento')})
-              </button>
-            </div>
-          </div>
-
-          {/* View Mode Toggle */}
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">Vista:</span>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="properties">
+          {(provided) => (
+            <div
+              {...provided.droppableProps}
+              ref={provided.innerRef}
+              className="space-y-3"
             >
-              <Home className="h-4 w-4 inline mr-1" />
-              Tarjetas
-            </button>
-            <button
-              onClick={() => setViewMode('building')}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === 'building' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Building2 className="h-4 w-4 inline mr-1" />
-              Por Edificio
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Properties Display */}
-      {viewMode === 'grid' ? (
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <Droppable droppableId="properties" direction="horizontal">
-            {(provided) => (
-              <div
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
-                {filteredProperties.map((property, index) => {
-                  const status = safeStatus((property as any)?.status);
-                  const rent = safeNumber((property as any)?.rent, 0);
-                  const expenses = safeNumber((property as any)?.expenses, 0);
-                  const building = safeText((property as any)?.building, 'Sin edificio');
-                  const address = safeText((property as any)?.address, '-');
-                  const name = safeText((property as any)?.name, 'Sin nombre');
-
-                  return (
-                    <Draggable key={String(property.id)} draggableId={String(property.id)} index={index}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          className={`bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 ${
-                            snapshot.isDragging ? 'shadow-lg scale-105 rotate-2' : ''
-                          }`}
-                        >
-                          <div className="p-6">
-                            <div className="flex items-start justify-between mb-4">
-                              <div>
-                                <h3 className="text-lg font-semibold text-gray-900">{name}</h3>
-                                <p className="text-sm text-gray-500">{getTypeLabel(property.type ?? 'otro')}</p>
-                                <p className="text-sm text-blue-600 font-medium">{building}</p>
-                              </div>
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                                  status
-                                )}`}
-                              >
-                                {prettyStatus(status)}
-                              </span>
-                            </div>
-
-                            <div className="space-y-3">
-                              <div className="flex items-center text-gray-600">
-                                <MapPin className="h-4 w-4 mr-2" />
-                                <span className="text-sm">{address}</span>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <p className="text-xs text-gray-500">Alquiler</p>
-                                  <p className="font-semibold text-gray-900">${rent.toLocaleString()}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500">Expensas</p>
-                                  <p className="font-semibold text-gray-900">${expenses.toLocaleString()}</p>
-                                </div>
-                              </div>
-
-                              {property.tenant ? (
-                                <div>
-                                  <p className="text-xs text-gray-500">Inquilino</p>
-                                  <p className="font-medium text-gray-900">{safeText(property.tenant)}</p>
-                                </div>
-                              ) : null}
-
-                              {property.contractStart && property.contractEnd ? (
-                                <div className="flex items-center text-gray-600">
-                                  <Calendar className="h-4 w-4 mr-2" />
-                                  <span className="text-xs">
-                                    {safeText(property.contractStart)} - {safeText(property.contractEnd)}
-                                  </span>
-                                </div>
-                              ) : null}
-
-                              {property.notes ? (
-                                <div>
-                                  <p className="text-xs text-gray-500">Notas</p>
-                                  <p className="text-sm text-gray-700 truncate">{safeText(property.notes)}</p>
-                                </div>
-                              ) : null}
-
-                              <div className="text-xs text-gray-500">Actualizado: {safeText(property.lastUpdated, '-')}</div>
-                            </div>
-
-                            <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
-                              <button className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-                                <Eye className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleEdit(property)}
-                                className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(property.id)}
-                                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
+              {properties.map((property, index) => (
+                <Draggable
+                  key={property.id}
+                  draggableId={property.id.toString()}
+                  index={index}
+                >
+                  {(provided) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className="bg-white p-4 rounded-xl shadow border hover:bg-blue-50"
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <p className="font-semibold">{property.name}</p>
+                          <p className="text-sm text-gray-600">
+                            {property.building} - {property.address}
+                          </p>
+                          <p className="text-sm">
+                            ${property.rent.toLocaleString()}
+                          </p>
                         </div>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(propertiesByBuilding).map(([building, buildingProperties]) => (
-            <div key={building} className="bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Building2 className="h-6 w-6 text-blue-600" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{building}</h3>
-                      <p className="text-sm text-gray-500">
-                        {buildingProperties.length} propiedades • {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'ocupado').length}{' '}
-                        ocupadas • {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'disponible').length} disponibles
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      <UsersIcon className="h-3 w-3 mr-1" />
-                      {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'ocupado').length} ocupadas
-                    </span>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      <Home className="h-3 w-3 mr-1" />
-                      {buildingProperties.filter((p) => safeStatus((p as any)?.status) === 'disponible').length} disponibles
-                    </span>
-                  </div>
-                </div>
-              </div>
 
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {buildingProperties.map((property) => {
-                    const status = safeStatus((property as any)?.status);
-                    const rent = safeNumber((property as any)?.rent, 0);
-                    const expenses = safeNumber((property as any)?.expenses, 0);
-                    const name = safeText((property as any)?.name, 'Sin nombre');
-
-                    return (
-                      <div key={property.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h4 className="font-medium text-gray-900">{name}</h4>
-                            <p className="text-sm text-gray-500">{getTypeLabel(property.type ?? 'otro')}</p>
-                          </div>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                              status
-                            )}`}
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
+                              setEditingProperty(property);
+                              setFormData(property);
+                              setShowModal(true);
+                            }}
+                            className="text-blue-600"
                           >
-                            {prettyStatus(status)}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Alquiler:</span>
-                            <span className="font-medium">${rent.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Expensas:</span>
-                            <span className="font-medium">${expenses.toLocaleString()}</span>
-                          </div>
-                          {property.tenant ? (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">Inquilino:</span>
-                              <span className="font-medium text-blue-600">{safeText(property.tenant)}</span>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex justify-end space-x-1 mt-3 pt-3 border-t border-gray-100">
-                          <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
-                            <Eye className="h-4 w-4" />
+                            <Edit size={16} />
                           </button>
-                          <button onClick={() => handleEdit(property)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => handleDelete(property.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors">
-                            <Trash2 className="h-4 w-4" />
+                          <button
+                            onClick={() => handleDelete(property.id)}
+                            className="text-red-600"
+                          >
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </Droppable>
+      </DragDropContext>
 
-      {filteredProperties.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay propiedades</h3>
-          <p className="text-gray-500">
-            {filterStatus === 'all' ? 'No hay propiedades registradas.' : `No hay propiedades con estado "${filterStatus}".`}
-          </p>
-        </div>
-      )}
-
-      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {editingProperty ? 'Editar Propiedad' : 'Agregar Nueva Propiedad'}
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-xl w-full max-w-lg space-y-4">
+
+            <h3 className="text-lg font-semibold">
+              {editingProperty ? 'Editar Propiedad' : 'Nueva Propiedad'}
             </h3>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+            <input
+              placeholder="Nombre"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as Property['type'] })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="departamento">Departamento</option>
-                    <option value="galpon">Galpón</option>
-                    <option value="local">Local</option>
-                    <option value="oficina">Oficina</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
+            {/* 🔥 DESPLEGABLE EDIFICIOS */}
+            <select
+              value={formData.building}
+              onChange={e => setFormData({ ...formData, building: e.target.value })}
+              className="w-full border p-2 rounded-lg"
+            >
+              {BUILDINGS.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Edificio</label>
-                  <input
-                    type="text"
-                    value={formData.building}
-                    onChange={(e) => setFormData({ ...formData, building: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+            <input
+              placeholder="Dirección"
+              value={formData.address}
+              onChange={e => setFormData({ ...formData, address: e.target.value })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+            <input
+              type="number"
+              placeholder="Alquiler"
+              value={formData.rent}
+              onChange={e => setFormData({ ...formData, rent: Number(e.target.value) })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Alquiler ($)</label>
-                  <input
-                    type="number"
-                    value={formData.rent}
-                    onChange={(e) => setFormData({ ...formData, rent: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+            <input
+              type="number"
+              placeholder="Expensas"
+              value={formData.expenses}
+              onChange={e => setFormData({ ...formData, expenses: Number(e.target.value) })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Expensas ($)</label>
-                  <input
-                    type="number"
-                    value={formData.expenses}
-                    onChange={(e) => setFormData({ ...formData, expenses: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+            <input
+              type="date"
+              value={formData.contractStart}
+              onChange={e => setFormData({ ...formData, contractStart: e.target.value })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de contrato</label>
-                  <input
-                    type="date"
-                    value={formData.contractStart}
-                    onChange={(e) => setFormData({ ...formData, contractStart: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
+            <input
+              type="date"
+              value={formData.contractEnd}
+              onChange={e => setFormData({ ...formData, contractEnd: e.target.value })}
+              className="w-full border p-2 rounded-lg"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fin de contrato</label>
-                  <input
-                    type="date"
-                    value={formData.contractEnd}
-                    onChange={(e) => setFormData({ ...formData, contractEnd: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 border rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+              >
+                Guardar
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Notas adicionales sobre la propiedad..."
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    setEditingProperty(null);
-                  }}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                  {editingProperty ? 'Actualizar' : 'Agregar'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
+
     </div>
   );
 };
