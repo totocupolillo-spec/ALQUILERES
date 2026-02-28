@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Eye, Printer, X, BarChart3 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, Printer, BarChart3 } from 'lucide-react';
 import { Tenant, Receipt, CashMovement, Property } from '../App';
 import MonthlySummary from './MonthlySummary';
 
@@ -18,29 +18,34 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
   tenants,
   properties,
   receipts,
-  setReceipts,
-  addCashMovement,
-  updateTenantBalance,
-  supabaseHook,
-  user
+  setReceipts
 }) => {
 
   const [showMonthlySummary, setShowMonthlySummary] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
 
+  const normalizeReceipt = (r: Receipt): Receipt => ({
+    ...r,
+    total: r.total ?? 0,
+    paidAmount: r.paidAmount ?? 0,
+    remainingBalance: r.remainingBalance ?? 0
+  });
+
   const printReceipt = (receipt: Receipt) => {
+    const safe = normalizeReceipt(receipt);
+
     const win = window.open('', '_blank');
     if (!win) return;
 
     win.document.write(`
       <html>
         <body style="font-family: Arial; padding:40px">
-          <h2>Recibo ${receipt.receiptNumber}</h2>
-          <p><strong>Inquilino:</strong> ${receipt.tenant}</p>
-          <p><strong>Propiedad:</strong> ${receipt.property}</p>
-          <p><strong>Total:</strong> $${receipt.total.toLocaleString()}</p>
-          <p><strong>Pagado:</strong> $${receipt.paidAmount.toLocaleString()}</p>
-          <p><strong>Saldo:</strong> $${receipt.remainingBalance.toLocaleString()}</p>
+          <h2>Recibo ${safe.receiptNumber}</h2>
+          <p><strong>Inquilino:</strong> ${safe.tenant}</p>
+          <p><strong>Propiedad:</strong> ${safe.property}</p>
+          <p><strong>Total:</strong> $${safe.total.toLocaleString()}</p>
+          <p><strong>Pagado:</strong> $${safe.paidAmount.toLocaleString()}</p>
+          <p><strong>Saldo:</strong> $${safe.remainingBalance.toLocaleString()}</p>
         </body>
       </html>
     `);
@@ -75,30 +80,34 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             </tr>
           </thead>
           <tbody>
-            {receipts.map(r => (
-              <tr key={r.id} className="hover:bg-blue-50">
-                <td className="px-6 py-4">{r.receiptNumber}</td>
-                <td>{r.tenant}</td>
-                <td>${r.total.toLocaleString()}</td>
-                <td>
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    r.remainingBalance > 0
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {r.remainingBalance > 0 ? 'Pendiente' : 'Pagado'}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    onClick={() => setSelectedReceipt(r)}
-                    className="text-blue-600"
-                  >
-                    <Eye className="h-5 w-5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {receipts.map(r => {
+              const safe = normalizeReceipt(r);
+
+              return (
+                <tr key={safe.id} className="hover:bg-blue-50">
+                  <td className="px-6 py-4">{safe.receiptNumber}</td>
+                  <td>{safe.tenant}</td>
+                  <td>${safe.total.toLocaleString()}</td>
+                  <td>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      safe.remainingBalance > 0
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}>
+                      {safe.remainingBalance > 0 ? 'Pendiente' : 'Pagado'}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => setSelectedReceipt(safe)}
+                      className="text-blue-600"
+                    >
+                      <Eye className="h-5 w-5" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -111,9 +120,9 @@ const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
             </h3>
 
             <div className="space-y-2">
-              <p><strong>Total:</strong> ${selectedReceipt.total}</p>
-              <p><strong>Pagado:</strong> ${selectedReceipt.paidAmount}</p>
-              <p><strong>Saldo:</strong> ${selectedReceipt.remainingBalance}</p>
+              <p><strong>Total:</strong> ${selectedReceipt.total.toLocaleString()}</p>
+              <p><strong>Pagado:</strong> ${selectedReceipt.paidAmount.toLocaleString()}</p>
+              <p><strong>Saldo:</strong> ${selectedReceipt.remainingBalance.toLocaleString()}</p>
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
