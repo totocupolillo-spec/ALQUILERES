@@ -123,7 +123,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
                             {property.building} - {property.address}
                           </p>
                           <p className="text-sm">
-                            ${property.rent.toLocaleString()}
+                          ${(property.rent ?? 0).toLocaleString()}
                           </p>
                         </div>
 
