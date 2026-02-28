@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { X, Download, BarChart3 } from 'lucide-react';
-import { Receipt, Tenant, Property, BUILDINGS } from '../App';
+import React, { useMemo, useState } from 'react';
+import { X } from 'lucide-react';
+import { Receipt, Tenant, Property } from '../App';
 
 interface MonthlySummaryProps {
   receipts: Receipt[];
@@ -8,20 +8,6 @@ interface MonthlySummaryProps {
   properties: Property[];
   onClose: () => void;
 }
-
-interface SummaryRow {
-  building: string;
-  address: string;
-  tenant: string;
-  paidAmount: number;
-  totalDebt: number;
-  property: string;
-}
-
-const months = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
-];
 
 const MonthlySummary: React.FC<MonthlySummaryProps> = ({
   receipts,
@@ -32,201 +18,158 @@ const MonthlySummary: React.FC<MonthlySummaryProps> = ({
 
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showCollected, setShowCollected] = useState(false);
+  const [showDebt, setShowDebt] = useState(false);
 
   const summaryData = useMemo(() => {
-    if (!selectedMonth) return [];
 
-    const monthReceipts = receipts.filter(
-      r => r.month === selectedMonth && r.year === selectedYear
+    const monthReceipts = receipts.filter(r =>
+      r.month === selectedMonth &&
+      r.year === selectedYear
     );
 
-    const rows: SummaryRow[] = properties.map(property => {
+    const grouped: Record<string, {
+      tenant: string;
+      paid: number;
+      debt: number;
+    }> = {};
 
-      const tenant = tenants.find(t => t.propertyId === property.id);
-
-      // 🔵 OBLIGACIÓN DEL MES (automática)
-      const contractActive =
-        tenant &&
-        new Date(tenant.contractStart) <= new Date(selectedYear, months.indexOf(selectedMonth), 1) &&
-        new Date(tenant.contractEnd) >= new Date(selectedYear, months.indexOf(selectedMonth), 1);
-
-      const monthlyObligation = contractActive ? Number(property.rent || 0) : 0;
-
-      // 🔵 PAGOS DEL MES
-      const paidAmount = monthReceipts
-        .filter(r => r.property === property.name && r.building === property.building)
-        .reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
-
-      const totalDebt = Math.max(monthlyObligation - paidAmount, 0);
-
-      return {
-        building: property.building,
-        address: property.address,
-        tenant: tenant?.name || '-',
-        property: property.name,
-        paidAmount,
-        totalDebt
-      };
+    monthReceipts.forEach(r => {
+      if (!grouped[r.tenant]) {
+        grouped[r.tenant] = {
+          tenant: r.tenant,
+          paid: 0,
+          debt: 0
+        };
+      }
+      grouped[r.tenant].paid += r.paidAmount || 0;
+      grouped[r.tenant].debt += r.remainingBalance || 0;
     });
 
-    // Orden fijo por edificio
-    const buildingOrderIndex = (b: string) => {
-      const idx = BUILDINGS.findIndex(x => x === b);
-      return idx === -1 ? 999 : idx;
-    };
+    return Object.values(grouped);
 
-    return rows.sort((a, b) => {
-      const bo = buildingOrderIndex(a.building) - buildingOrderIndex(b.building);
-      if (bo !== 0) return bo;
-      return a.property.localeCompare(b.property);
-    });
+  }, [receipts, selectedMonth, selectedYear]);
 
-  }, [selectedMonth, selectedYear, receipts, tenants, properties]);
-
-  const totals = useMemo(() => {
-    return summaryData.reduce(
-      (acc, row) => ({
-        totalCollected: acc.totalCollected + row.paidAmount,
-        totalDebt: acc.totalDebt + row.totalDebt
-      }),
-      { totalCollected: 0, totalDebt: 0 }
-    );
-  }, [summaryData]);
-
-  const exportToCSV = () => {
-    if (!selectedMonth) return;
-
-    const headers = ['Edificio','Propiedad','Dirección','Inquilino','Monto Pagado','Saldo Adeudado'];
-
-    const csvContent = [
-      headers.join(','),
-      ...summaryData.map(row => [
-        row.building,
-        row.property,
-        row.address,
-        row.tenant,
-        row.paidAmount,
-        row.totalDebt
-      ].join(',')),
-      '',
-      `Total Cobranzas,,,,${totals.totalCollected},`,
-      `Total Adeudado,,,,${totals.totalDebt},`
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `resumen_${selectedMonth}_${selectedYear}.csv`;
-    link.click();
-  };
+  const totalCollected = summaryData.reduce((sum, r) => sum + r.paid, 0);
+  const totalDebt = summaryData.reduce((sum, r) => sum + r.debt, 0);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
 
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center space-x-3">
-            <BarChart3 className="h-6 w-6 text-blue-600" />
-            <h3 className="text-xl font-semibold text-gray-900">
-              Resumen Mensual
-            </h3>
-          </div>
+      <div className="bg-white rounded-xl p-6 w-full max-w-4xl space-y-6">
+
+        <div className="flex justify-between">
+          <h3 className="text-lg font-semibold">Resumen Mensual</h3>
           <button onClick={onClose}>
-            <X className="h-6 w-6 text-gray-400 hover:text-gray-600" />
+            <X />
           </button>
         </div>
 
         {/* Filtros */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-
-          <select
+        <div className="flex gap-4">
+          <input
+            placeholder="Mes"
             value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
+            onChange={e => setSelectedMonth(e.target.value)}
             className="border px-3 py-2 rounded-lg"
-          >
-            <option value="">Seleccionar mes</option>
-            {months.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-
+          />
           <input
             type="number"
             value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            onChange={e => setSelectedYear(Number(e.target.value))}
             className="border px-3 py-2 rounded-lg"
           />
+        </div>
 
-          <button
-            onClick={exportToCSV}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+        {/* Totales */}
+        <div className="grid grid-cols-2 gap-6">
+
+          <div
+            onClick={() => setShowCollected(true)}
+            className="bg-green-50 p-4 rounded-lg cursor-pointer hover:bg-green-100 transition"
           >
-            Exportar CSV
-          </button>
+            <p className="text-sm">Total Cobranzas</p>
+            <p className="text-2xl font-bold text-green-700">
+              ${totalCollected.toLocaleString()}
+            </p>
+          </div>
+
+          <div
+            onClick={() => setShowDebt(true)}
+            className="bg-red-50 p-4 rounded-lg cursor-pointer hover:bg-red-100 transition"
+          >
+            <p className="text-sm">Total Adeudado</p>
+            <p className="text-2xl font-bold text-red-700">
+              ${totalDebt.toLocaleString()}
+            </p>
+          </div>
 
         </div>
 
-        {selectedMonth && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <p className="text-sm text-green-600">Total Cobrado</p>
-                <p className="text-2xl font-bold text-green-800">
-                  ${totals.totalCollected.toLocaleString()}
-                </p>
-              </div>
-
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-sm text-red-600">Total Adeudado</p>
-                <p className="text-2xl font-bold text-red-800">
-                  ${totals.totalDebt.toLocaleString()}
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Edificio
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Dirección
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Inquilino
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Pagado
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Adeudado
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {summaryData.map(row => (
-                    <tr key={`${row.building}-${row.property}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">{row.building} - {row.property}</td>
-                      <td className="px-6 py-4">{row.address}</td>
-                      <td className="px-6 py-4">{row.tenant}</td>
-                      <td className="px-6 py-4 text-green-600 font-semibold">
-                        ${row.paidAmount.toLocaleString()}
-                      </td>
-                      <td className={`px-6 py-4 font-semibold ${row.totalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        ${row.totalDebt.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        {/* Tabla */}
+        <div className="max-h-72 overflow-y-auto border rounded-lg">
+          <table className="min-w-full">
+            <thead className="bg-blue-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs">Inquilino</th>
+                <th className="px-4 py-2 text-left text-xs">Pagado</th>
+                <th className="px-4 py-2 text-left text-xs">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryData.map(r => (
+                <tr key={r.tenant} className="hover:bg-gray-50">
+                  <td className="px-4 py-2">{r.tenant}</td>
+                  <td className="px-4 py-2 text-green-600">${r.paid.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-red-600">${r.debt.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
       </div>
+
+      {/* Modal Cobranzas */}
+      {showCollected && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md">
+            <h4 className="font-semibold mb-4">Detalle Cobranzas</h4>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {summaryData.map(r => (
+                <div key={r.tenant} className="flex justify-between">
+                  <span>{r.tenant}</span>
+                  <span className="text-green-600">${r.paid.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowCollected(false)} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Adeudado */}
+      {showDebt && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-xl w-full max-w-md">
+            <h4 className="font-semibold mb-4">Detalle Adeudado</h4>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {summaryData.map(r => (
+                <div key={r.tenant} className="flex justify-between">
+                  <span>{r.tenant}</span>
+                  <span className="text-red-600">${r.debt.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowDebt(false)} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
