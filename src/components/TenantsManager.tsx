@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit, Trash2, X, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, X } from 'lucide-react';
 import { Tenant, Property } from '../types';
 import { Receipt } from '../App';
 import { generateObligations, calculateTenantFinancialStatus } from '../utils/financialEngine';
@@ -22,6 +22,10 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
 
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
 
+  /* =========================
+     MOTOR FINANCIERO
+     ========================= */
+
   const obligations = useMemo(() => {
     return generateObligations(tenants, properties);
   }, [tenants, properties]);
@@ -37,7 +41,7 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
   }, [receipts, tenants]);
 
   const financialStatusMap = useMemo(() => {
-    const map: any = {};
+    const map: Record<number, ReturnType<typeof calculateTenantFinancialStatus>> = {};
     tenants.forEach((tenant) => {
       map[tenant.id] = calculateTenantFinancialStatus(
         tenant.id,
@@ -48,6 +52,20 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
     return map;
   }, [tenants, obligations, payments]);
 
+  const handleDelete = (id: number) => {
+    if (confirm('¿Eliminar inquilino?')) {
+      const tenant = tenants.find(t => t.id === id);
+      if (tenant?.propertyId) {
+        updatePropertyTenant(null, null, tenant.propertyId);
+      }
+      setTenants(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
+  const getTenantReceipts = (tenantName: string) => {
+    return receipts.filter(r => r.tenant === tenantName);
+  };
+
   return (
     <div className="space-y-6">
 
@@ -57,28 +75,42 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
         <table className="min-w-full">
           <thead className="bg-blue-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs uppercase">Nombre</th>
+              <th className="px-6 py-3 text-left text-xs uppercase">Inquilino</th>
+              <th className="px-6 py-3 text-left text-xs uppercase">Propiedad</th>
               <th className="px-6 py-3 text-left text-xs uppercase">Saldo</th>
-              <th className="px-6 py-3 text-left text-xs uppercase">Acciones</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {tenants.map(t => {
-
-              const balance = financialStatusMap[t.id]?.balance ?? 0;
+            {tenants.map((tenant) => {
+              const status = financialStatusMap[tenant.id];
+              const balance = status?.balance ?? 0;
 
               return (
-                <tr key={t.id} className="hover:bg-blue-50">
-                  <td className="px-6 py-4 font-medium">{t.name}</td>
-                  <td className="px-6 py-4">
-                    {balance > 0
-                      ? <span className="text-red-600">Debe ${balance.toLocaleString()}</span>
-                      : <span className="text-green-600">Al día</span>
-                    }
+                <tr key={tenant.id} className="hover:bg-blue-50 cursor-pointer"
+                    onClick={() => setSelectedTenant(tenant)}>
+                  <td className="px-6 py-4 font-medium">{tenant.name}</td>
+                  <td>{tenant.property || '-'}</td>
+                  <td className="font-semibold">
+                    {balance > 0 ? (
+                      <span className="text-red-600">
+                        Debe ${balance.toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="text-green-600">
+                        Al día
+                      </span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 flex gap-2">
-                    <button onClick={() => setSelectedTenant(t)}>
-                      <Eye className="h-4 w-4 text-blue-600" />
+                  <td>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(tenant.id);
+                      }}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </td>
                 </tr>
@@ -88,13 +120,13 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
         </table>
       </div>
 
-      {/* MODAL DETALLE INQUILINO */}
+      {/* 🔥 MODAL DETALLE FINANCIERO */}
       {selectedTenant && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-3xl p-6 rounded-xl">
+          <div className="bg-white rounded-xl p-6 w-full max-w-3xl space-y-6">
 
-            <div className="flex justify-between mb-4">
-              <h3 className="font-semibold text-lg">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-semibold">
                 {selectedTenant.name}
               </h3>
               <button onClick={() => setSelectedTenant(null)}>
@@ -102,46 +134,67 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({
               </button>
             </div>
 
-            <div className="space-y-4">
+            {(() => {
+              const status = financialStatusMap[selectedTenant.id];
+              const receiptsList = getTenantReceipts(selectedTenant.name);
 
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="font-medium">
-                  Estado: {financialStatusMap[selectedTenant.id]?.balance > 0 ? "Deudor" : "Al día"}
-                </p>
-                <p className="text-sm">
-                  Saldo: ${financialStatusMap[selectedTenant.id]?.balance.toLocaleString() ?? 0}
-                </p>
-              </div>
+              return (
+                <>
+                  <div className="grid grid-cols-3 gap-4">
 
-              <div className="max-h-72 overflow-y-auto border rounded-lg">
-                <table className="min-w-full">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-xs text-left">Fecha</th>
-                      <th className="px-4 py-2 text-xs text-left">Periodo</th>
-                      <th className="px-4 py-2 text-xs text-left">Total</th>
-                      <th className="px-4 py-2 text-xs text-left">Pagado</th>
-                      <th className="px-4 py-2 text-xs text-left">Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {receipts
-                      .filter(r => r.tenant === selectedTenant.name)
-                      .map(r => (
-                        <tr key={r.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-sm">{r.createdDate}</td>
-                          <td className="px-4 py-2 text-sm">{r.month} {r.year}</td>
-                          <td className="px-4 py-2 text-sm">${r.total.toLocaleString()}</td>
-                          <td className="px-4 py-2 text-sm text-green-600">${r.paidAmount.toLocaleString()}</td>
-                          <td className="px-4 py-2 text-sm text-red-600">${r.remainingBalance.toLocaleString()}</td>
-                        </tr>
-                      ))
-                    }
-                  </tbody>
-                </table>
-              </div>
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <p className="text-sm">Total Obligación</p>
+                      <p className="text-xl font-bold">
+                        ${status?.totalObligation.toLocaleString()}
+                      </p>
+                    </div>
 
-            </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <p className="text-sm">Total Pagado</p>
+                      <p className="text-xl font-bold text-green-600">
+                        ${status?.totalPaid.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="bg-red-50 p-4 rounded-lg">
+                      <p className="text-sm">Saldo</p>
+                      <p className="text-xl font-bold text-red-600">
+                        ${status?.balance.toLocaleString()}
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold mb-2">Historial de Recibos</h4>
+                    <div className="max-h-64 overflow-y-auto border rounded-lg">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left">Recibo</th>
+                            <th className="px-4 py-2 text-left">Periodo</th>
+                            <th className="px-4 py-2 text-left">Total</th>
+                            <th className="px-4 py-2 text-left">Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {receiptsList.map(r => (
+                            <tr key={r.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2">{r.receiptNumber}</td>
+                              <td>{r.month} {r.year}</td>
+                              <td>${r.total.toLocaleString()}</td>
+                              <td className={r.remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}>
+                                ${r.remainingBalance.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
 
           </div>
         </div>
