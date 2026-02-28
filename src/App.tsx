@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, Receipt, Calendar, BarChart3, Search, Bell, Wallet } from 'lucide-react';
+import { Building2, Users, Receipt, Calendar, BarChart3, Wallet } from 'lucide-react';
 import { useSupabase } from './hooks/useSupabase';
 import { useFirebaseDB } from './hooks/useFirebaseDB';
 import Dashboard from './components/Dashboard';
@@ -8,7 +8,6 @@ import TenantsManager from './components/TenantsManager';
 import ReceiptsManager from './components/ReceiptsManager';
 import PaymentsHistory from './components/PaymentsHistory';
 import CashRegister from './components/CashRegister';
-import DataManager from './components/DataManager';
 import AuthComponent from './components/AuthComponent';
 import { supabase } from './lib/supabase';
 import { firebaseSmokeTest } from './lib/firebaseTest';
@@ -37,7 +36,7 @@ export interface Tenant {
   property: string;
   contractStart: string;
   contractEnd: string;
-  updateFrequencyMonths: number; // 🔥 AGREGADO
+  updateFrequencyMonths: number;
   deposit: number;
   guarantor: {
     name: string;
@@ -56,6 +55,7 @@ export interface Property {
   address: string;
   rent: number;
   expenses: number;
+  updateFrequencyMonths: number; // 🔥 AHORA ESTÁ ACÁ TAMBIÉN
   tenant: string | null;
   status: 'ocupado' | 'disponible' | 'mantenimiento';
   contractStart: string;
@@ -100,9 +100,7 @@ export interface CashMovement {
 }
 
 const saveToLocalStorage = (key: string, data: any) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {}
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 };
 
 const loadFromLocalStorage = (key: string, defaultValue: any) => {
@@ -115,6 +113,7 @@ const loadFromLocalStorage = (key: string, defaultValue: any) => {
 };
 
 function App() {
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -123,10 +122,21 @@ function App() {
   const firebaseDB = useFirebaseDB();
   const dbHook = firebaseDB;
 
-  const [properties, setProperties] = useState<Property[]>(() => loadFromLocalStorage('properties', []));
-  const [tenants, setTenants] = useState<Tenant[]>(() => loadFromLocalStorage('tenants', []));
-  const [receipts, setReceipts] = useState<Receipt[]>(() => loadFromLocalStorage('receipts', []));
-  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() => loadFromLocalStorage('cashMovements', []));
+  const [properties, setProperties] = useState<Property[]>(() =>
+    loadFromLocalStorage('properties', [])
+  );
+
+  const [tenants, setTenants] = useState<Tenant[]>(() =>
+    loadFromLocalStorage('tenants', [])
+  );
+
+  const [receipts, setReceipts] = useState<Receipt[]>(() =>
+    loadFromLocalStorage('receipts', [])
+  );
+
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() =>
+    loadFromLocalStorage('cashMovements', [])
+  );
 
   useEffect(() => {
     firebaseSmokeTest();
@@ -159,10 +169,10 @@ function App() {
         dbHook.loadCashMovements()
       ]);
 
-      if (propertiesData.length > 0) setProperties(propertiesData);
-      if (tenantsData.length > 0) setTenants(tenantsData);
-      if (receiptsData.length > 0) setReceipts(receiptsData);
-      if (cashMovementsData.length > 0) setCashMovements(cashMovementsData);
+      if (propertiesData.length) setProperties(propertiesData);
+      if (tenantsData.length) setTenants(tenantsData);
+      if (receiptsData.length) setReceipts(receiptsData);
+      if (cashMovementsData.length) setCashMovements(cashMovementsData);
     } catch {}
   };
 
@@ -180,42 +190,6 @@ function App() {
     { id: 'cash', label: 'Arqueo', icon: Wallet },
   ] as const;
 
-  const addCashMovement = (movement: Omit<CashMovement, 'id'>) => {
-    const newMovement: CashMovement = { ...movement, id: Date.now() };
-    setCashMovements(prev => [newMovement, ...prev]);
-    if (user) dbHook.saveCashMovement(newMovement);
-  };
-
-  const updateTenantBalance = (tenantName: string, newBalance: number) => {
-    setTenants(prev =>
-      prev.map(t => (t.name === tenantName ? { ...t, balance: newBalance } : t))
-    );
-  };
-
-  const updatePropertyTenant = (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => {
-    setProperties(prev =>
-      prev.map(property => {
-        if (oldPropertyId && property.id === oldPropertyId) {
-          return { ...property, tenant: null, status: 'disponible' };
-        }
-        if (property.id === propertyId) {
-          return { ...property, tenant: tenantName, status: 'ocupado' };
-        }
-        return property;
-      })
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Cargando sistema...
-      </div>
-    );
-  }
-
-  if (!user) return <AuthComponent />;
-
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -223,9 +197,9 @@ function App() {
       case 'properties':
         return <PropertiesManager properties={properties} setProperties={setProperties} />;
       case 'tenants':
-        return <TenantsManager tenants={tenants} setTenants={setTenants} properties={properties} receipts={receipts} updatePropertyTenant={updatePropertyTenant} />;
+        return <TenantsManager tenants={tenants} setTenants={setTenants} properties={properties} receipts={receipts} updatePropertyTenant={() => {}} />;
       case 'receipts':
-        return <ReceiptsManager tenants={tenants} properties={properties} receipts={receipts} setReceipts={setReceipts} addCashMovement={addCashMovement} updateTenantBalance={updateTenantBalance} supabaseHook={dbHook} user={user} />;
+        return <ReceiptsManager tenants={tenants} properties={properties} receipts={receipts} setReceipts={setReceipts} addCashMovement={() => {}} updateTenantBalance={() => {}} supabaseHook={dbHook} user={user} />;
       case 'history':
         return <PaymentsHistory receipts={receipts} />;
       case 'cash':
@@ -234,6 +208,9 @@ function App() {
         return null;
     }
   };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Cargando sistema...</div>;
+  if (!user) return <AuthComponent />;
 
   return (
     <div className="min-h-screen bg-gray-50">
