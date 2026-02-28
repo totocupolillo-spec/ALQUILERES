@@ -8,7 +8,7 @@ interface PropertiesManagerProps {
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
 }
 
-const emptyProperty = (): Property => ({
+const createEmptyProperty = (): Property => ({
   id: Date.now(),
   name: '',
   type: 'departamento',
@@ -32,22 +32,31 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
 
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [formData, setFormData] = useState<Property>(emptyProperty());
+  const [formData, setFormData] = useState<Property>(createEmptyProperty());
+
+  const normalizeProperty = (property: Property): Property => ({
+    ...property,
+    updateFrequencyMonths: property.updateFrequencyMonths ?? 12,
+    rent: property.rent ?? 0,
+    expenses: property.expenses ?? 0
+  });
 
   const handleSave = () => {
     if (!formData.name || !formData.address) return;
 
+    const normalized = normalizeProperty(formData);
+
     if (editingProperty) {
       setProperties(prev =>
-        prev.map(p => p.id === editingProperty.id ? formData : p)
+        prev.map(p => p.id === editingProperty.id ? normalized : p)
       );
     } else {
-      setProperties(prev => [...prev, { ...formData, id: Date.now() }]);
+      setProperties(prev => [...prev, { ...normalized, id: Date.now() }]);
     }
 
     setShowModal(false);
     setEditingProperty(null);
-    setFormData(emptyProperty());
+    setFormData(createEmptyProperty());
   };
 
   const handleDelete = (id: number) => {
@@ -74,7 +83,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
         <button
           onClick={() => {
             setEditingProperty(null);
-            setFormData(emptyProperty());
+            setFormData(createEmptyProperty());
             setShowModal(true);
           }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow"
@@ -88,57 +97,66 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
         <Droppable droppableId="properties">
           {(provided) => (
             <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
-              {properties.map((property, index) => (
-                <Draggable
-                  key={property.id}
-                  draggableId={property.id.toString()}
-                  index={index}
-                >
-                  {(provided) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className="bg-white rounded-xl shadow border p-5 hover:bg-blue-50 transition"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-lg">{property.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {property.building} • {property.address}
-                          </p>
-                          <p className="text-blue-700 font-medium">
-                            ${(property.rent ?? 0).toLocaleString()}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Actualización cada {property.updateFrequencyMonths ?? 0} meses
-                          </p>
-                        </div>
+              {properties.map((property, index) => {
+                const safeProperty = normalizeProperty(property);
 
-                        <div className="flex gap-4">
-                          <button
-                            onClick={() => {
-                              setEditingProperty(property);
-                              setFormData(property);
-                              setShowModal(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <Edit size={18} />
-                          </button>
+                return (
+                  <Draggable
+                    key={safeProperty.id}
+                    draggableId={safeProperty.id.toString()}
+                    index={index}
+                  >
+                    {(provided) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        className="bg-white rounded-xl shadow border p-5 hover:bg-blue-50 transition"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-lg">
+                              {safeProperty.name}
+                            </p>
 
-                          <button
-                            onClick={() => handleDelete(property.id)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                            <p className="text-sm text-gray-500">
+                              {safeProperty.building} • {safeProperty.address}
+                            </p>
+
+                            <p className="text-blue-700 font-medium">
+                              ${safeProperty.rent.toLocaleString()}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              Actualización cada {safeProperty.updateFrequencyMonths} meses
+                            </p>
+                          </div>
+
+                          <div className="flex gap-4">
+                            <button
+                              onClick={() => {
+                                setEditingProperty(safeProperty);
+                                setFormData(safeProperty);
+                                setShowModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Edit size={18} />
+                            </button>
+
+                            <button
+                              onClick={() => handleDelete(safeProperty.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </Draggable>
-              ))}
+                    )}
+                  </Draggable>
+                );
+              })}
               {provided.placeholder}
             </div>
           )}
@@ -220,14 +238,11 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
                     })
                   }
                   className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: 12"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Inicio contrato
-                </label>
+                <label className="block text-sm text-gray-600 mb-1">Inicio contrato</label>
                 <input
                   type="date"
                   value={formData.contractStart}
@@ -237,9 +252,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Fin contrato
-                </label>
+                <label className="block text-sm text-gray-600 mb-1">Fin contrato</label>
                 <input
                   type="date"
                   value={formData.contractEnd}
@@ -255,7 +268,7 @@ const PropertiesManager: React.FC<PropertiesManagerProps> = ({
                 onClick={() => {
                   setShowModal(false);
                   setEditingProperty(null);
-                  setFormData(emptyProperty());
+                  setFormData(createEmptyProperty());
                 }}
                 className="px-6 py-2 border rounded-lg hover:bg-gray-50"
               >
