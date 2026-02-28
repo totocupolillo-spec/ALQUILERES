@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Plus, User, Phone, Mail, Calendar, Edit, Trash2, Eye } from 'lucide-react';
 import { Tenant, Property } from '../App';
-import { generateObligations, calculateTenantFinancialStatus } from '../utils/financialEngine'
+import { generateObligations, calculateTenantFinancialStatus } from '../utils/financialEngine';
 
 interface TenantsManagerProps {
   tenants: Tenant[];
@@ -10,7 +10,12 @@ interface TenantsManagerProps {
   updatePropertyTenant: (propertyId: number | null, tenantName: string | null, oldPropertyId?: number | null) => void;
 }
 
-const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, properties, updatePropertyTenant }) => {
+const TenantsManager: React.FC<TenantsManagerProps> = ({
+  tenants,
+  setTenants,
+  properties,
+  updatePropertyTenant
+}) => {
   const [showModal, setShowModal] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
 
@@ -27,7 +32,35 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
     guarantorPhone: '',
   });
 
-  // Helpers seguros
+  /* =========================
+     🔵 MOTOR FINANCIERO REAL
+     ========================= */
+
+  const obligations = useMemo(() => {
+    return generateObligations(tenants, properties);
+  }, [tenants, properties]);
+
+  // ⚠️ Por ahora pagos vacíos (los conectamos en siguiente fase)
+  const payments: { tenantId: number; amount: number }[] = [];
+
+  const financialStatusMap = useMemo(() => {
+    const map: Record<number, ReturnType<typeof calculateTenantFinancialStatus>> = {};
+
+    tenants.forEach((tenant) => {
+      map[tenant.id] = calculateTenantFinancialStatus(
+        tenant.id,
+        obligations,
+        payments
+      );
+    });
+
+    return map;
+  }, [tenants, obligations]);
+
+  /* =========================
+     Helpers seguros
+     ========================= */
+
   const safeText = (v: unknown, fallback = ''): string =>
     typeof v === 'string' ? v : v == null ? fallback : String(v);
 
@@ -47,6 +80,10 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
     if (!s) return 'Sin estado';
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
+
+  /* =========================
+     CRUD
+     ========================= */
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +106,7 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
         email: safeText(formData.guarantorEmail),
         phone: safeText(formData.guarantorPhone),
       },
-      balance: editingTenant?.balance ?? 0,
+      balance: 0, // 🔵 Ya no usamos balance manual
       status: editingTenant?.status ?? 'activo',
     };
 
@@ -85,18 +122,6 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
       }
     }
 
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      propertyId: '',
-      contractStart: '',
-      contractEnd: '',
-      deposit: '',
-      guarantorName: '',
-      guarantorEmail: '',
-      guarantorPhone: '',
-    });
     setShowModal(false);
     setEditingTenant(null);
   };
@@ -141,36 +166,13 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
     }
   };
 
-  const getAvailableProperties = () => {
-    return properties.filter(
-      (property) => property.status === 'disponible' || (editingTenant && property.id === editingTenant.propertyId)
-    );
-  };
-
-  const safeTenants = useMemo(() => {
-    // Evita crashes si algún tenant viene mal armado desde DB
-    return tenants.map((t) => ({
-      ...t,
-      name: safeText(t?.name),
-      email: safeText(t?.email),
-      phone: safeText(t?.phone),
-      property: safeText(t?.property),
-      contractStart: safeText(t?.contractStart),
-      contractEnd: safeText(t?.contractEnd),
-      deposit: safeNumber(t?.deposit, 0),
-      balance: safeNumber(t?.balance, 0),
-      status: safeStatus(t?.status),
-      guarantor: {
-        name: safeText(t?.guarantor?.name),
-        email: safeText(t?.guarantor?.email),
-        phone: safeText(t?.guarantor?.phone),
-      },
-    }));
-  }, [tenants]);
+  /* =========================
+     Render
+     ========================= */
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Inquilinos</h2>
@@ -178,18 +180,6 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
         </div>
         <button
           onClick={() => {
-            setFormData({
-              name: '',
-              email: '',
-              phone: '',
-              propertyId: '',
-              contractStart: '',
-              contractEnd: '',
-              deposit: '',
-              guarantorName: '',
-              guarantorEmail: '',
-              guarantorPhone: '',
-            });
             setEditingTenant(null);
             setShowModal(true);
           }}
@@ -200,262 +190,65 @@ const TenantsManager: React.FC<TenantsManagerProps> = ({ tenants, setTenants, pr
         </button>
       </div>
 
-      {/* Tenants Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-blue-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquilino</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacto</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Propiedad</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contrato</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saldo</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inquilino</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Propiedad</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contrato</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Saldo Real</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
               </tr>
             </thead>
 
             <tbody className="bg-white divide-y divide-gray-200">
-              {safeTenants.map((tenant) => (
-                <tr key={tenant.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <User className="h-5 w-5 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{tenant.name || 'Sin nombre'}</div>
-                        <div className="text-sm text-gray-500">Depósito: ${tenant.deposit.toLocaleString()}</div>
-                        <div className="text-sm text-gray-500">Garante: {tenant.guarantor.name || '-'}</div>
-                      </div>
-                    </div>
-                  </td>
+              {tenants.map((tenant) => {
+                const status = financialStatusMap[tenant.id];
+                const balance = status?.balance ?? 0;
 
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center text-sm text-gray-900">
-                        <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                        {tenant.email || '-'}
-                      </div>
-                      <div className="flex items-center text-sm text-gray-500">
-                        <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                        {tenant.phone || '-'}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{tenant.property || '-'}</div>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center text-sm text-gray-900">
-                        <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                        Inicio: {tenant.contractStart || '-'}
-                      </div>
-                      <div className="text-sm text-gray-500">Vence: {tenant.contractEnd || '-'}</div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className={`text-sm font-semibold ${tenant.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ${tenant.balance.toLocaleString()}
-                    </div>
-                    <div className="text-xs text-gray-500">{tenant.balance > 0 ? 'Debe' : 'Al día'}</div>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                        tenant.status
-                      )}`}
-                    >
-                      {prettyStatus(tenant.status)}
-                    </span>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button className="text-gray-400 hover:text-blue-600 transition-colors">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => handleEdit(tenant)} className="text-gray-400 hover:text-blue-600 transition-colors">
+                return (
+                  <tr key={tenant.id} className="hover:bg-blue-50 transition-colors">
+                    <td className="px-6 py-4 font-medium">{tenant.name}</td>
+                    <td className="px-6 py-4">{tenant.property || '-'}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {tenant.contractStart} → {tenant.contractEnd}
+                    </td>
+                    <td className="px-6 py-4 font-semibold">
+                      {balance > 0 ? (
+                        <span className="text-red-600">
+                          Debe ${balance.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-green-600">
+                          Al día
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(tenant.status)}`}>
+                        {prettyStatus(tenant.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 flex gap-2">
+                      <button onClick={() => handleEdit(tenant)} className="text-blue-600 hover:text-blue-800">
                         <Edit className="h-4 w-4" />
                       </button>
-                      <button onClick={() => handleDelete(tenant.id)} className="text-gray-400 hover:text-red-600 transition-colors">
+                      <button onClick={() => handleDelete(tenant.id)} className="text-red-600 hover:text-red-800">
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {safeTenants.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
-                    No hay inquilinos cargados.
-                  </td>
-                </tr>
-              )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
+
           </table>
         </div>
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {editingTenant ? 'Editar Inquilino' : 'Agregar Nuevo Inquilino'}
-            </h3>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Propiedad Asignada</label>
-                  <select
-                    value={formData.propertyId}
-                    onChange={(e) => setFormData({ ...formData, propertyId: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Sin propiedad asignada</option>
-                    {getAvailableProperties().map((property) => (
-                      <option key={property.id} value={String(property.id)}>
-                        {property.name} - {property.building} (${(Number(property.rent) || 0).toLocaleString()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de contrato</label>
-                  <input
-                    type="date"
-                    value={formData.contractStart}
-                    onChange={(e) => setFormData({ ...formData, contractStart: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fin de contrato</label>
-                  <input
-                    type="date"
-                    value={formData.contractEnd}
-                    onChange={(e) => setFormData({ ...formData, contractEnd: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Depósito ($)</label>
-                <input
-                  type="number"
-                  value={formData.deposit}
-                  onChange={(e) => setFormData({ ...formData, deposit: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <h4 className="text-md font-medium text-gray-900 mb-3">Datos del Garante</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del garante</label>
-                    <input
-                      type="text"
-                      value={formData.guarantorName}
-                      onChange={(e) => setFormData({ ...formData, guarantorName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email del garante</label>
-                    <input
-                      type="email"
-                      value={formData.guarantorEmail}
-                      onChange={(e) => setFormData({ ...formData, guarantorEmail: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono del garante</label>
-                    <input
-                      type="tel"
-                      value={formData.guarantorPhone}
-                      onChange={(e) => setFormData({ ...formData, guarantorPhone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    setEditingTenant(null);
-                  }}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                  {editingTenant ? 'Actualizar' : 'Agregar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
