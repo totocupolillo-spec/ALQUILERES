@@ -1,213 +1,82 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Eye, Printer, X } from 'lucide-react';
-import { Tenant, Receipt, CashMovement, Property } from '../App';
-import MonthlySummary from './MonthlySummary';
-import { generateObligations, calculateTenantFinancialStatus } from '../utils/financialEngine';
+import { Tenant, Property } from '../types'
 
-interface ReceiptsManagerProps {
-  tenants: Tenant[];
-  properties: Property[];
-  receipts: Receipt[];
-  setReceipts: React.Dispatch<React.SetStateAction<Receipt[]>>;
-  addCashMovement: (movement: Omit<CashMovement, 'id'>) => void;
-  updateTenantBalance: (tenantName: string, newBalance: number) => void;
-  supabaseHook: any;
-  user: any;
+export interface MonthlyObligation {
+  tenantId: number
+  month: string
+  amount: number
 }
 
-const ReceiptsManager: React.FC<ReceiptsManagerProps> = ({
-  tenants,
-  properties,
-  receipts,
-  setReceipts,
-  addCashMovement,
-  updateTenantBalance,
-  supabaseHook,
-  user
-}) => {
+export interface TenantFinancialStatus {
+  tenantId: number
+  totalObligation: number
+  totalPaid: number
+  balance: number
+  isUpToDate: boolean
+}
 
-  const [showGenerator, setShowGenerator] = useState(false);
-  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState('');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [paidAmount, setPaidAmount] = useState(0);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [showMonthlySummary, setShowMonthlySummary] = useState(false);
+const getMonthRange = (start: string, end: string) => {
+  const months: string[] = []
 
-  /* =========================
-     MOTOR FINANCIERO REAL
-     ========================= */
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
 
-  const obligations = useMemo(() => {
-    return generateObligations(tenants, properties);
-  }, [tenants, properties]);
+  while (current <= endDate) {
+    const year = current.getFullYear()
+    const month = String(current.getMonth() + 1).padStart(2, '0')
+    months.push(`${year}-${month}`)
+    current.setMonth(current.getMonth() + 1)
+  }
 
-  const payments = useMemo(() => {
-    return receipts.map(r => {
-      const tenant = tenants.find(t => t.name === r.tenant);
-      return {
-        tenantId: tenant?.id ?? 0,
-        amount: Number(r.paidAmount ?? 0)
-      };
-    }).filter(p => p.tenantId !== 0);
-  }, [receipts, tenants]);
+  return months
+}
 
-  const selectedTenant = tenants.find(t => t.id === selectedTenantId);
+export const generateObligations = (
+  tenants: Tenant[],
+  properties: Property[]
+): MonthlyObligation[] => {
+  const obligations: MonthlyObligation[] = []
 
-  const financialStatus = selectedTenant
-    ? calculateTenantFinancialStatus(selectedTenant.id, obligations, payments)
-    : null;
+  tenants.forEach((tenant) => {
+    if (!tenant.contractStart || !tenant.contractEnd) return
+    if (!tenant.propertyId) return
 
-  const property = selectedTenant
-    ? properties.find(p => p.id === selectedTenant.propertyId)
-    : null;
+    const property = properties.find(p => p.id === tenant.propertyId)
+    if (!property) return
 
-  const rent = property?.rent || 0;
-  const expenses = property?.expenses || 0;
+    const months = getMonthRange(tenant.contractStart, tenant.contractEnd)
 
-  const previousDebt = financialStatus?.balance || 0;
-  const total = rent + expenses + previousDebt;
-  const remaining = total - paidAmount;
+    months.forEach(month => {
+      obligations.push({
+        tenantId: tenant.id,
+        month,
+        amount: property.rent
+      })
+    })
+  })
 
-  /* =========================
-     AVISO ACTUALIZACIÓN
-     ========================= */
+  return obligations
+}
 
-  const shouldUpdateContract = () => {
-    if (!selectedTenant?.updateFrequencyMonths || !selectedTenant.contractStart) return false;
+export const calculateTenantFinancialStatus = (
+  tenantId: number,
+  obligations: MonthlyObligation[],
+  payments: { tenantId: number; amount: number }[]
+): TenantFinancialStatus => {
 
-    const start = new Date(selectedTenant.contractStart);
-    const current = new Date(selectedYear, new Date(`${selectedMonth} 1`).getMonth(), 1);
+  const tenantObligations = obligations.filter(o => o.tenantId === tenantId)
+  const totalObligation = tenantObligations.reduce((acc, o) => acc + o.amount, 0)
 
-    const diffMonths =
-      (current.getFullYear() - start.getFullYear()) * 12 +
-      (current.getMonth() - start.getMonth());
+  const tenantPayments = payments.filter(p => p.tenantId === tenantId)
+  const totalPaid = tenantPayments.reduce((acc, p) => acc + p.amount, 0)
 
-    return diffMonths > 0 && diffMonths % selectedTenant.updateFrequencyMonths === 0;
-  };
+  const balance = totalObligation - totalPaid
 
-  /* =========================
-     GENERAR RECIBO
-     ========================= */
-
-  const handleGenerate = async () => {
-
-    if (!selectedTenant) return;
-
-    if (shouldUpdateContract()) {
-      alert('⚠ Este mes corresponde actualización de contrato.');
-    }
-
-    const newReceipt: Receipt = {
-      id: Date.now(),
-      receiptNumber: `R-${Date.now()}`,
-      tenant: selectedTenant.name,
-      property: selectedTenant.property,
-      building: property?.building || '',
-      month: selectedMonth,
-      year: selectedYear,
-      rent,
-      expenses,
-      otherCharges: [],
-      previousBalance: previousDebt,
-      total,
-      paidAmount,
-      remainingBalance: remaining,
-      currency: 'ARS',
-      paymentMethod: 'efectivo',
-      status: remaining > 0 ? 'pendiente' : 'pagado',
-      dueDate: '',
-      createdDate: new Date().toISOString().split('T')[0]
-    };
-
-    setReceipts(prev => [newReceipt, ...prev]);
-
-    if (user) {
-      await supabaseHook.saveReceipt(newReceipt);
-    }
-
-    updateTenantBalance(selectedTenant.name, remaining);
-
-    if (paidAmount > 0) {
-      addCashMovement({
-        type: 'income',
-        description: `Cobro ${selectedTenant.name}`,
-        amount: paidAmount,
-        currency: 'ARS',
-        date: new Date().toISOString().split('T')[0],
-        tenant: selectedTenant.name,
-        property: selectedTenant.property
-      });
-    }
-
-    setShowGenerator(false);
-    setPaidAmount(0);
-  };
-
-  return (
-    <div className="space-y-6">
-
-      <div className="flex justify-between">
-        <h2 className="text-2xl font-bold">Recibos</h2>
-        <button
-          onClick={() => setShowGenerator(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Generar Recibo
-        </button>
-      </div>
-
-      {/* GENERADOR */}
-      {showGenerator && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-xl w-full max-w-md space-y-4">
-            <h3 className="font-semibold">Generar Recibo</h3>
-
-            <select
-              onChange={e => setSelectedTenantId(Number(e.target.value))}
-              className="w-full border p-2 rounded"
-            >
-              <option>Seleccionar Inquilino</option>
-              {tenants.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-
-            <input
-              placeholder="Mes (ej: Enero)"
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="w-full border p-2 rounded"
-            />
-
-            <input
-              type="number"
-              placeholder="Monto pagado"
-              value={paidAmount}
-              onChange={e => setPaidAmount(Number(e.target.value))}
-              className="w-full border p-2 rounded"
-            />
-
-            <div className="bg-gray-50 p-3 rounded text-sm">
-              <p>Deuda anterior: ${previousDebt.toLocaleString()}</p>
-              <p>Alquiler: ${rent.toLocaleString()}</p>
-              <p>Expensas: ${expenses.toLocaleString()}</p>
-              <p className="font-semibold">Total: ${total.toLocaleString()}</p>
-              <p className="text-red-600 font-semibold">Saldo restante: ${remaining.toLocaleString()}</p>
-            </div>
-
-            <button
-              onClick={handleGenerate}
-              className="bg-blue-600 text-white w-full py-2 rounded"
-            >
-              Confirmar
-            </button>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-};
-
-export default ReceiptsManager;
+  return {
+    tenantId,
+    totalObligation,
+    totalPaid,
+    balance,
+    isUpToDate: balance <= 0
+  }
+}
